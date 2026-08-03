@@ -1,0 +1,14 @@
+# Python-Umgebungen — zusammen rund 15 GB, gehören nicht ins Repo.
+# Neu aufbauen mit den Befehlen aus der README.
+venv-vllm/
+venv-sglang/
+venv*/
+
+# Modellgewichte liegen im HuggingFace-Cache, nicht hier.
+*.safetensors
+*.gguf
+*.bin
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen3.6-35B-A3B auf DGX Spark — Performance-Tests und Befunde</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground: #F6F8F8;
+    --paper: #FFFFFF;
+    --ink: #0F1A1C;
+    --muted: #546366;
+    --rule: #D9E1E2;
+    --accent: #1A5E63;
+    --accent-wash: #E4EFEF;
+    --ok: #1F7A4D;
+    --ok-wash: #E6F2EB;
+    --fail: #B3261E;
+    --fail-wash: #FAEAE9;
+    --warn: #8A5A00;
+    --warn-wash: #FAF1DF;
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --s1: 0.25rem; --s2: 0.5rem; --s3: 0.75rem; --s4: 1rem;
+    --s5: 1.5rem; --s6: 2rem; --s7: 3rem; --s8: 4.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px; margin: 0 auto; padding: var(--s6) var(--s5) var(--s8);
+    display: grid; grid-template-columns: 1fr; gap: var(--s6);
+  }
+  @media (min-width: 1000px) {
+    .wrap { grid-template-columns: 230px minmax(0, 1fr); gap: var(--s7); align-items: start; }
+    .toc { position: sticky; top: var(--s5); }
+  }
+
+  .masthead { grid-column: 1 / -1; border-bottom: 3px solid var(--ink); padding-bottom: var(--s5); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 var(--s3);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(1.9rem, 4.4vw, 3rem);
+    line-height: 1.12; margin: 0 0 var(--s3); text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.02rem, 1.9vw, 1.22rem);
+    color: var(--muted); margin: 0; max-width: 62ch; line-height: 1.5;
+  }
+  .meta {
+    margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .toc nav { border-left: 2px solid var(--rule); padding-left: var(--s4); }
+  .toc h2 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 var(--s3); font-weight: 600;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; display: flex; flex-direction: column; gap: 2px; }
+  .toc li { counter-increment: toc; }
+  .toc a {
+    display: block; padding: 4px 0; color: var(--muted); text-decoration: none;
+    font-size: 0.85rem; line-height: 1.35;
+  }
+  .toc a::before { content: counter(toc) "."; font-family: var(--mono); font-size: 0.72rem; color: var(--accent); margin-right: 6px; }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: var(--s7); }
+  section { scroll-margin-top: var(--s5); }
+  h2 {
+    font-family: var(--serif); font-size: clamp(1.35rem, 2.7vw, 1.85rem); font-weight: 600;
+    margin: 0 0 var(--s4); line-height: 1.2; text-wrap: balance;
+    padding-bottom: var(--s2); border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-family: var(--sans); font-size: 1.02rem; font-weight: 650; margin: var(--s5) 0 var(--s3); }
+  h4 {
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: var(--s4) 0 var(--s2); font-weight: 600;
+  }
+  p { margin: 0 0 var(--s4); max-width: 72ch; }
+  main ul, main ol { max-width: 72ch; margin: 0 0 var(--s4); padding-left: var(--s5); }
+  main li { margin-bottom: var(--s2); }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--accent-wash);
+    padding: 1px 5px; border-radius: 3px; color: var(--accent);
+  }
+
+  .tldr { background: var(--ink); color: #EAF0F0; border-radius: 4px; padding: var(--s5) var(--s5) var(--s4); }
+  .tldr h2 { color: #FFF; border-bottom-color: rgba(255,255,255,0.22); }
+  .tldr p { color: #C3D0D1; }
+  .tldr code { background: rgba(255,255,255,0.12); color: #9FD8D6; }
+  .tldr-grid { display: grid; gap: var(--s4); grid-template-columns: 1fr; margin-top: var(--s4); }
+  @media (min-width: 640px) { .tldr-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tldr-item { border-top: 2px solid var(--accent); padding-top: var(--s3); }
+  .tldr-item h3 { margin: 0 0 var(--s2); color: #FFF; font-size: 0.95rem; }
+  .tldr-item p { margin: 0; font-size: 0.9rem; line-height: 1.55; }
+
+  .headline-figs { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: var(--s5) 0 0; }
+  .fig { background: rgba(255,255,255,0.07); border-radius: 3px; padding: var(--s3) var(--s4); }
+  .fig .n {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 600; color: #7FCFCB;
+    display: block; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .fig .l { font-size: 0.76rem; color: #B4C3C4; display: block; margin-top: 4px; line-height: 1.35; }
+
+  .scroller { overflow-x: auto; margin: 0 0 var(--s4); border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  caption {
+    caption-side: top; text-align: left; font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: var(--s3) var(--s4) var(--s2);
+  }
+  th, td { padding: 7px var(--s3); text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); background: var(--ground);
+    position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.best { font-weight: 700; color: var(--accent); }
+  td.worse { color: var(--fail); }
+  .rowlab { font-weight: 600; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 100px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-wash); color: var(--ok); }
+  .pill.fail { background: var(--fail-wash); color: var(--fail); }
+  .pill.warn { background: var(--warn-wash); color: var(--warn); }
+
+  pre {
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.55; background: var(--ink);
+    color: #D5E0E1; padding: var(--s3) var(--s4); border-radius: 3px; overflow-x: auto; margin: 0 0 var(--s4);
+  }
+  pre .hl { color: #F0A9A2; }
+  pre .dim { color: #7E8F90; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    padding: var(--s3) var(--s4); margin: 0 0 var(--s4); border-radius: 0 3px 3px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.caution { border-left-color: var(--warn); background: var(--warn-wash); }
+  .note.error { border-left-color: var(--fail); background: var(--fail-wash); }
+  .note h4 { margin-top: 0; color: inherit; }
+
+  details.deep { border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); margin: 0 0 var(--s4); }
+  details.deep > summary {
+    padding: var(--s3) var(--s4); cursor: pointer; font-family: var(--mono);
+    font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  details.deep > summary:hover { background: var(--accent-wash); }
+  details.deep > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  details.deep[open] > summary { border-bottom: 1px solid var(--rule); }
+  .deep-body { padding: var(--s4); }
+  .deep-body > :last-child { margin-bottom: 0; }
+  .deep-body .scroller, .deep-body pre { margin-bottom: var(--s3); }
+
+  dl.spec { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: 0 0 var(--s4); font-size: 0.9rem; }
+  dl.spec dt { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+  dl.spec dd { margin: 0; }
+
+  .glossary { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; } }
+  .term { border-top: 2px solid var(--rule); padding-top: var(--s3); }
+  .term dt { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: var(--s1); }
+  .term dd { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: var(--s4); margin-top: var(--s5);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Testprotokoll · Inferenz-Benchmark · Teil 2</p>
+    <h1>Qwen3.6-35B-A3B auf DGX Spark GB10</h1>
+    <p class="standfirst">NVFP4 mit Multi-Token-Prediction, gemessen mit demselben Harness wie
+      Laguna-S-2.1 — dreifaches Decode-Tempo bei einem Drittel des Speicherbedarfs, aber ohne
+      wirksame Präfix-Wiederverwendung.</p>
+    <div class="meta">
+      <span><b>Hardware</b> NVIDIA GB10 · sm_121a · 121 GB Unified Memory</span>
+      <span><b>Modell</b> RedHatAI/Qwen3.6-35B-A3B-NVFP4 · 35B MoE, 3B aktiv</span>
+      <span><b>Engine</b> vLLM 0.25.1</span>
+      <span><b>Serverstarts</b> 1 · beim ersten Versuch erfolgreich</span>
+    </div>
+  </header>
+
+  <aside class="toc">
+    <nav aria-label="Inhaltsübersicht">
+      <h2>Inhalt</h2>
+      <ol>
+        <li><a href="#tldr">Auf einen Blick</a></li>
+        <li><a href="#kern">Kernaussagen</a></li>
+        <li><a href="#modell">Modell und Varianten</a></li>
+        <li><a href="#aufbau">Testaufbau</a></li>
+        <li><a href="#start">Startverlauf</a></li>
+        <li><a href="#decode">Decode-Durchsatz</a></li>
+        <li><a href="#latenz">Antwortlatenz</a></li>
+        <li><a href="#praefix">Der fehlende Präfix-Cache</a></li>
+        <li><a href="#prefill">Prefill-Skalierung</a></li>
+        <li><a href="#speicher">Speicher</a></li>
+        <li><a href="#fallstricke">Fallstricke</a></li>
+        <li><a href="#vergleich">Vergleich mit Laguna</a></li>
+        <li><a href="#empfehlung">Empfehlung</a></li>
+        <li><a href="#limits">Limitationen</a></li>
+        <li><a href="#glossar">Glossar</a></li>
+        <li><a href="#artefakte">Artefakte</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ================= TL;DR ================= -->
+    <section id="tldr" class="tldr">
+      <h2>Auf einen Blick</h2>
+      <p>Eine Messreihe, ein einziger Serverstart, keine gescheiterten Versuche — im Gegensatz zu den
+        zehn Anläufen der Laguna-Tests. Das Ergebnis ist auf zwei Achsen eindeutig und auf einer dritten
+        überraschend.</p>
+
+      <div class="tldr-grid">
+        <div class="tldr-item">
+          <h3>Dreifaches Decode-Tempo</h3>
+          <p>60,7 bis 201,2 tok/s gegen Lagunas 20,6 bis 64,3 — Faktor 2,7 bis 3,4 über alle
+            Decode-Szenarien. Entspricht dem Verhältnis der aktiven Parameter, 3 zu 8 Mrd.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>Ein Drittel des Speichers</h3>
+          <p>23,45 GiB Gewichte statt 69,34. Dadurch 3 366 051 Token KV-Cache und 12,84× Concurrency
+            bei vollem 262k-Kontext.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>Kein Präfix-Cache-Effekt</h3>
+          <p>Warmer und kalter Lauf identisch: 2,822 gegen 2,806 s. Laguna löste denselben Präfix in
+            0,30 s auf — Faktor 30 durch Caching, der hier vollständig entfällt.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>Doppelt so schnelles Prefill</h3>
+          <p>5301 tok/s gegen 2301 bei 16k Token, und 2429 gegen 1224 bei knapp 200k. Der Rohdurchsatz
+            ist durchweg gut doppelt so hoch.</p>
+        </div>
+      </div>
+
+      <div class="headline-figs">
+        <div class="fig"><span class="n">201,2</span><span class="l">tok/s Spitzendurchsatz<br>Code, c=4</span></div>
+        <div class="fig"><span class="n">0,094</span><span class="l">Sekunden TTFT<br>bestes Ergebnis</span></div>
+        <div class="fig"><span class="n">3 366 051</span><span class="l">Token KV-Cache<br>bei 262k Kontext</span></div>
+        <div class="fig"><span class="n">1,00×</span><span class="l">Cache-Gewinn bei<br>wiederholtem Präfix</span></div>
+      </div>
+    </section>
+
+    <!-- ================= Kernaussagen ================= -->
+    <section id="kern">
+      <h2>Kernaussagen</h2>
+
+      <h3>1. Aktive Parameter bestimmen das Tempo</h3>
+      <p>Qwen3.6 aktiviert 3 Mrd. Parameter pro Token, Laguna 8 Mrd. Das gemessene Verhältnis von 2,7 bis
+        3,4 im Durchsatz deckt sich fast exakt damit. Auf einer Maschine mit 273 GB/s Speicherbandbreite
+        ist das die dominierende Größe — Gesamtparameterzahl und Quantisierungsformat treten dahinter
+        zurück.</p>
+
+      <h3>2. Die Maschine ist bei diesem Modell nicht am Limit</h3>
+      <p>Von einem auf vier parallele Streams fällt der Einzelstream nur auf 77 % (Laguna: 61 %), während
+        sich der Gesamtdurchsatz fast verdreifacht. Höhere Concurrency als die gemessenen vier Stufen
+        würde vermutlich weiter tragen.</p>
+
+      <h3>3. Lineare Attention verhindert die Präfix-Wiederverwendung</h3>
+      <p>Qwen3.6 nutzt in etwa drei von vier Layern lineare Attention mit sequenziell fortgeschriebenem
+        Zustand. Ein solcher Zustand lässt sich nicht wie ein KV-Cache stückweise wiederverwenden. Die
+        Messung bestätigt das Verhalten eindeutig; die architektonische Erklärung ist aus der
+        Konfiguration abgeleitet, nicht direkt nachgewiesen.</p>
+
+      <h3>4. Das Modell ist multimodal — was der Name nicht verrät</h3>
+      <p>Architektur <code>Qwen3_5MoeForConditionalGeneration</code> mit eigener
+        <code>model_visual.safetensors</code> (0,89 GB) und <code>vision_config</code>. Der
+        Vision-Encoder ist von der Quantisierung ausgenommen und belegt Speicher, auch wenn ausschließlich
+        Text verarbeitet wird.</p>
+
+      <h3>5. Der Harness musste korrigiert werden</h3>
+      <p>Qwen3.6 liefert seine Ausgabe im Streaming-Feld <code>reasoning</code> statt <code>content</code>.
+        Ohne Anpassung wäre die Zeit bis zum ersten Token nie gesetzt und die Decode-Rate über die
+        Gesamtzeit statt über die Decode-Phase gerechnet worden.</p>
+    </section>
+
+    <!-- ================= Modell ================= -->
+    <section id="modell">
+      <h2>Modell und Varianten</h2>
+
+      <div class="note caution">
+        <p><strong>Zur Bezeichnung:</strong> Ein Modell namens <em>Qwen3.6-36B-A3B</em> existiert nicht.
+          Die MoE-Variante der Qwen3.6-Reihe heißt <strong>Qwen3.6-35B-A3B</strong>, daneben gibt es das
+          dichte <strong>Qwen3.6-27B</strong>.</p>
+      </div>
+
+      <h3>Architektur des vermessenen Checkpoints</h3>
+      <dl class="spec">
+        <dt>Repo</dt><dd><code>RedHatAI/Qwen3.6-35B-A3B-NVFP4</code></dd>
+        <dt>Architekturen</dt><dd><code>Qwen3_5MoeForConditionalGeneration</code> · Spekulationskopf <code>Qwen3_5MoeMTP</code></dd>
+        <dt>model_type</dt><dd><code>qwen3_5_moe</code></dd>
+        <dt>Parameter</dt><dd>35 Mrd. gesamt, 3 Mrd. aktiv pro Token</dd>
+        <dt>Layer</dt><dd>40 — lineare Attention in etwa drei von vier Positionen, volle Attention in jeder vierten</dd>
+        <dt>Kontext</dt><dd><code>max_position_embeddings</code> 262 144</dd>
+        <dt>Quantisierung</dt><dd><code>compressed-tensors</code>, Format <code>nvfp4-pack-quantized</code>, Gruppengröße 16, FP8-E4M3-Skalen</dd>
+        <dt>Ausgenommen</dt><dd>Vision-Encoder, <code>lm_head</code>, MTP-Gewichte (<code>re:^mtp.*</code>), Gate- und Linear-Attention-Projektionen</dd>
+      </dl>
+
+      <h4>Dateien im Repo</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Datei</th><th class="num">Größe</th><th>Funktion</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">model.safetensors</td><td class="num">22,46 GB</td><td>Sprachmodell, NVFP4-quantisiert</td></tr>
+            <tr><td class="rowlab">model_mtp.safetensors</td><td class="num">1,69 GB</td><td>Multi-Token-Prediction, unquantisiert</td></tr>
+            <tr><td class="rowlab">model_visual.safetensors</td><td class="num">0,89 GB</td><td>Vision-Encoder, unquantisiert</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Verfügbare 4-Bit-Varianten</h3>
+      <p>Ein reines <code>INT4</code> im Sinne von compressed-tensors gibt es für Qwen3.6 nicht — die
+        Integer-Pfade heißen AWQ, GPTQ und AutoRound. Alle Größen über die HuggingFace-API gemessen.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Sortiert nach Format, dann nach Downloads</caption>
+          <thead><tr><th>Repo</th><th class="num">Größe</th><th>Format</th><th>MTP</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">nvidia/Qwen3.6-35B-A3B-NVFP4</td><td class="num">23,5 GB</td><td>modelopt</td><td>nein</td></tr>
+            <tr><td class="rowlab">RedHatAI/Qwen3.6-35B-A3B-NVFP4</td><td class="num">25,1 GB</td><td>compressed-tensors</td><td><strong>ja</strong></td></tr>
+            <tr><td class="rowlab">unsloth/Qwen3.6-35B-A3B-NVFP4-Fast</td><td class="num">23,7 GB</td><td>compressed-tensors</td><td>nein</td></tr>
+            <tr><td class="rowlab">unsloth/Qwen3.6-35B-A3B-NVFP4</td><td class="num">26,5 GB</td><td>compressed-tensors</td><td>nein</td></tr>
+            <tr><td class="rowlab">Intel/…-int4-mixed-AutoRound</td><td class="num">21,5 GB</td><td>auto-round</td><td>nein</td></tr>
+            <tr><td class="rowlab">palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4</td><td class="num">24,5 GB</td><td>gptq</td><td><strong>ja</strong></td></tr>
+            <tr><td class="rowlab">cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit</td><td class="num">25,0 GB</td><td>awq</td><td>nein</td></tr>
+            <tr><td class="rowlab">QuantTrio/Qwen3.6-35B-A3B-AWQ</td><td class="num">25,5 GB</td><td>awq</td><td>nein</td></tr>
+            <tr><td class="rowlab">Qwen/Qwen3.6-35B-A3B-FP8</td><td class="num">37,5 GB</td><td>fp8</td><td><strong>ja</strong></td></tr>
+            <tr><td class="rowlab">Qwen/Qwen3.6-35B-A3B</td><td class="num">71,9 GB</td><td>BF16</td><td>nein</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Gewählt wurde <code>RedHatAI/…-NVFP4</code> als einzige NVFP4-Variante mit MTP-Gewichten.
+        <code>compressed-tensors</code> ist zudem das Format, das vLLM und SGLang direkt verarbeiten.
+        Die MLX-Varianten sind für Apple Silicon und auf GB10 nutzlos.</p>
+
+      <div class="note">
+        <h4>Warum NVFP4 und nicht AWQ oder GPTQ</h4>
+        <p>Im Laguna-Test wurde nachgewiesen, dass NVFP4 auf sm_121 über
+          <code>FLASHINFER_CUTLASS</code> nativ läuft, ohne Marlin-Rückfall. AWQ und GPTQ gehen auf
+          dieser Architektur durch Marlin-Kernel — den langsameren Pfad. Das dortige Ergebnis
+          <em>INT4 schlägt NVFP4</em> überträgt sich nicht, weil es dort vom Speicherdruck bei 99,7 GB
+          Gewichten getrieben war. Bei 23–26 GB ist Speicher schlicht kein Thema.</p>
+      </div>
+    </section>
+
+    <!-- ================= Aufbau ================= -->
+    <section id="aufbau">
+      <h2>Testaufbau</h2>
+
+      <p>Hardware, Engine und Messmethodik identisch zum Laguna-Test, damit die Werte vergleichbar
+        bleiben.</p>
+
+      <dl class="spec">
+        <dt>GPU</dt><dd>NVIDIA GB10, Compute Capability 12.1 (sm_121a)</dd>
+        <dt>Speicher</dt><dd>121 GB Unified Memory</dd>
+        <dt>Betriebssystem</dt><dd>Ubuntu 24.04.4 LTS, aarch64</dd>
+        <dt>Treiber</dt><dd>NVIDIA 580.173.02, CUDA 13.0</dd>
+        <dt>Engine</dt><dd>vLLM 0.25.1, torch 2.11.0+cu130, FlashInfer 0.6.13</dd>
+      </dl>
+
+      <h4>Startkonfiguration</h4>
+      <pre>export CUTE_DSL_ARCH=sm_121a
+export MAX_JOBS=1
+
+vllm serve RedHatAI/Qwen3.6-35B-A3B-NVFP4 \
+  --speculative-config '{"method":"<span class="hl">mtp</span>","num_speculative_tokens":3}' \
+  --reasoning-parser qwen3 \
+  --max-num-seqs 32 \
+  --max-model-len 262144 \
+  --gpu-memory-utilization 0.85 \
+  --host 0.0.0.0 --port 8000</pre>
+
+      <p><code>MAX_JOBS=1</code> wurde aus dem Laguna-Test übernommen, wo vier parallele
+        <code>cicc</code>-Prozesse den OOM-Killer auslösten. Bei 23 GB Gewichten wäre hier deutlich mehr
+        Spielraum gewesen, aber die Regel kostet nichts.</p>
+
+      <h3>Messmethodik</h3>
+      <ul>
+        <li><code>bench.py</code> — 4 Szenarien × 3 Concurrency-Stufen (1, 2, 4) × 3 Wiederholungen,
+          Streaming für die TTFT, <code>ignore_eos</code> für exakte Tokenzahlen, <code>temperature 0</code>,
+          Aufwärmlauf vorab, Mediane als Ergebnis</li>
+        <li><code>prefill.py</code> — kaltes Prefill über 5 Längenstufen, pro Request eine eigene UUID im
+          Prompt, damit kein Cache greifen kann</li>
+      </ul>
+    </section>
+
+    <!-- ================= Start ================= -->
+    <section id="start">
+      <h2>Startverlauf</h2>
+
+      <p>Ein einziger Versuch, keine Korrekturen nötig — im Gegensatz zu den zehn Anläufen der
+        Laguna-Tests. Die dort erarbeiteten Einstellungen trugen unverändert.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Zeitverlauf des Starts</caption>
+          <thead><tr><th>Zeit</th><th>Ereignis</th><th class="num">Dauer</th></tr></thead>
+          <tbody>
+            <tr><td class="num">09:08–09:19</td><td>Download, 24 GB</td><td class="num">≈ 10 min</td></tr>
+            <tr><td class="num">09:19:34</td><td>Architektur erkannt: <code>Qwen3_5MoeForConditionalGeneration</code></td><td class="num">—</td></tr>
+            <tr><td class="num">09:19:39</td><td>Spekulationskopf erkannt: <code>Qwen3_5MoeMTP</code></td><td class="num">—</td></tr>
+            <tr><td class="num">09:22:17</td><td>Gewichte geladen, 23,45 GiB</td><td class="num">125,7 s</td></tr>
+            <tr><td class="num">09:33:53</td><td>KV-Cache alloziert, 3 366 051 Token</td><td class="num">—</td></tr>
+            <tr><td class="num">≈ 09:34</td><td><span class="pill ok">Server bereit</span></td><td class="num">≈ 14 min</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Die Methode <code>mtp</code> war korrekt — vLLM 0.25.1 kennt daneben auch
+        <code>qwen3_next_mtp</code>, das hier nicht nötig war. Kein OOM, kein Kernel-Fehler, kein
+        Neustart.</p>
+
+      <div class="note caution">
+        <h4>Die erste Anfrage ist keine Messung</h4>
+        <p>Der Smoke-Test lieferte 120 Token in 31,4 s, also <strong>3,8 tok/s</strong>. Die zweite
+          Anfrage lieferte 60 Token in 0,797 s, also <strong>75 tok/s</strong> — ein Unterschied um
+          Faktor 20. Die erste Anfrage nach dem Start enthält Aufwärmkosten, die in keine Messung
+          einfließen dürfen. <code>bench.py</code> fährt deshalb einen expliziten Aufwärmlauf, bevor
+          gemessen wird.</p>
+      </div>
+    </section>
+
+    <!-- ================= Decode ================= -->
+    <section id="decode">
+      <h2>Decode-Durchsatz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Gesamtdurchsatz in tok/s über alle gleichzeitigen Requests · Median aus 3 Läufen</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">pro Stream</th><th class="num">gesamt</th><th class="num">Laguna INT4</th><th class="num">Faktor</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">62,21</td><td class="num best">60,7</td><td class="num">20,6</td><td class="num">2,94×</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">56,15</td><td class="num best">101,3</td><td class="num">31,7</td><td class="num">3,19×</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">47,81</td><td class="num best">180,7</td><td class="num">52,8</td><td class="num">3,42×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">65,99</td><td class="num best">63,5</td><td class="num">23,8</td><td class="num">2,67×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">67,01</td><td class="num best">121,2</td><td class="num">39,0</td><td class="num">3,11×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">52,84</td><td class="num best">201,2</td><td class="num">64,3</td><td class="num">3,13×</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Skalierungsverhalten</h3>
+      <div class="scroller">
+        <table>
+          <caption>Prosa-Szenario · Verlust je Stream gegenüber Gewinn insgesamt</caption>
+          <thead><tr><th class="num">c</th><th class="num">pro Stream</th><th class="num">davon erhalten</th><th class="num">gesamt</th><th class="num">Skalierung</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="num">62,2</td><td class="num">100 %</td><td class="num">60,7</td><td class="num">—</td></tr>
+            <tr><td class="num">2</td><td class="num">56,2</td><td class="num">90 %</td><td class="num">101,3</td><td class="num">1,67×</td></tr>
+            <tr><td class="num">4</td><td class="num">47,8</td><td class="num best">77 %</td><td class="num">180,7</td><td class="num best">2,98×</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Zum Vergleich behielt Laguna bei c=4 nur 61 % der Einzelstream-Rate. Qwen3.6 ist mit 3 Mrd.
+        aktiven Parametern weiter von der Bandbreitendecke entfernt und kann Parallelität besser
+        ausnutzen — die gemessenen vier Stufen schöpfen das Potenzial vermutlich nicht aus.</p>
+    </section>
+
+    <!-- ================= Latenz ================= -->
+    <section id="latenz">
+      <h2>Antwortlatenz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Zeit bis zum ersten Token in Sekunden · Median</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">Qwen3.6</th><th class="num">Laguna INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num best">0,094</td><td class="num">0,276</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num best">0,259</td><td class="num">0,635</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num best">0,184</td><td class="num">0,513</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num best">0,128</td><td class="num">0,260</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num best">0,121</td><td class="num">0,266</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num best">0,130</td><td class="num">0,480</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num worse">2,806</td><td class="num">0,309</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num worse">4,360</td><td class="num">0,458</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num worse">7,226</td><td class="num">0,551</td></tr>
+            <tr><td class="rowlab">Prefill 16k wiederholt</td><td class="num">1</td><td class="num worse">2,822</td><td class="num">0,328</td></tr>
+            <tr><td class="rowlab">Prefill 16k wiederholt</td><td class="num">2</td><td class="num worse">4,362</td><td class="num">0,484</td></tr>
+            <tr><td class="rowlab">Prefill 16k wiederholt</td><td class="num">4</td><td class="num worse">7,265</td><td class="num">0,630</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Bei kurzen Prompts ist Qwen3.6 durchweg zwei- bis dreimal schneller am ersten Token. Bei langen
+        Prompts kehrt sich das Bild um — dazu der folgende Abschnitt.</p>
+    </section>
+
+    <!-- ================= Präfix ================= -->
+    <section id="praefix">
+      <h2>Der fehlende Präfix-Cache</h2>
+
+      <p>Der auffälligste Befund dieser Messreihe. Das Szenario <code>prefill_16k_wiederholt</code>
+        verwendet denselben langen Präfix wie das vorhergehende Szenario und sollte daher aus dem Cache
+        bedient werden.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>TTFT beim ersten Kontakt gegen die Wiederholung desselben Präfix</caption>
+          <thead><tr><th class="num">c</th><th class="num">erster Kontakt</th><th class="num">wiederholt</th><th class="num">Differenz</th><th>Laguna zum Vergleich</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="num">2,806 s</td><td class="num">2,822 s</td><td class="num">+0,6 %</td><td>0,309 → 0,328 s</td></tr>
+            <tr><td class="num">2</td><td class="num">4,360 s</td><td class="num">4,362 s</td><td class="num">+0,0 %</td><td>0,458 → 0,484 s</td></tr>
+            <tr><td class="num">4</td><td class="num">7,226 s</td><td class="num">7,265 s</td><td class="num">+0,5 %</td><td>0,551 → 0,630 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Der Nachweis über die Kaltmessung</h3>
+      <p>16 384 Token bei einer gemessenen Kaltrate von 5301 tok/s ergeben rechnerisch <strong>3,09 s</strong>.
+        Gemessen wurden im Hauptlauf <strong>2,806 s</strong>. Die als „warm" bezeichneten Werte waren
+        also Neuberechnungen zum vollen Preis — es gab nie einen Cache-Treffer.</p>
+
+      <p>Ein zweites Indiz liefert die Skalierung: die TTFT steigt mit der Concurrency nahezu linear
+        (2,8 / 4,4 / 7,2 s). Bei einem funktionierenden Präfix-Cache bliebe sie weitgehend konstant, wie
+        bei Laguna (0,31 / 0,46 / 0,55 s).</p>
+
+      <h3>Erklärungsansatz</h3>
+      <p>Die Quantisierungs-Ignoreliste des Checkpoints zeigt <code>linear_attn</code>-Projektionen in
+        etwa drei von vier Layern — Qwen3.6 mischt lineare mit voller Attention. Lineare Attention führt
+        einen sequenziell fortgeschriebenen Zustand mit, der sich nicht wie ein KV-Cache stückweise
+        adressieren und wiederverwenden lässt.</p>
+
+      <div class="note caution">
+        <p>Das Verhalten ist eindeutig gemessen. Die architektonische Begründung ist aus der
+          Konfiguration abgeleitet und wurde nicht direkt nachgewiesen — etwa durch Vergleich mit einem
+          rein voll-attentiven Modell derselben Größe.</p>
+      </div>
+
+      <h3>Praktische Bedeutung</h3>
+      <p>Für einen Agenten, der über zwanzig Turns denselben 16k-Token-Kontext mitschleppt, zahlt
+        Qwen3.6 jedes Mal etwa 2,8 s. Laguna zahlt beim ersten Mal 9,3 s und danach 0,3 s. Ab dem vierten
+        Turn liegt Laguna vorn, und der Abstand wächst mit jedem weiteren.</p>
+    </section>
+
+    <!-- ================= Prefill ================= -->
+    <section id="prefill">
+      <h2>Prefill-Skalierung</h2>
+
+      <p>Gemessen mit einmaligem Präfix je Request. Hier ist Qwen3.6 durchgehend gut doppelt so schnell.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Kaltes Prefill · Median aus 3 Läufen mit je eigener UUID im Prompt</caption>
+          <thead><tr><th class="num">Prompt-Token</th><th class="num">TTFT</th><th class="num">Prefill</th><th class="num">relativ</th><th class="num">Laguna INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="num">4 053</td><td class="num">0,80 s</td><td class="num">5064 tok/s</td><td class="num">—</td><td class="num">2255 tok/s</td></tr>
+            <tr><td class="num">16 384</td><td class="num">3,09 s</td><td class="num best">5301 tok/s</td><td class="num">100 %</td><td class="num">2301 tok/s</td></tr>
+            <tr><td class="num">65 362</td><td class="num">16,21 s</td><td class="num">4033 tok/s</td><td class="num">76 %</td><td class="num">1850 tok/s</td></tr>
+            <tr><td class="num">129 280</td><td class="num">42,24 s</td><td class="num">3060 tok/s</td><td class="num">58 %</td><td class="num">1484 tok/s</td></tr>
+            <tr><td class="num">198 163</td><td class="num">81,58 s</td><td class="num">2429 tok/s</td><td class="num">46 %</td><td class="num">1224 tok/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Von 16 384 auf 198 163 Token ist die Länge 12,1-fach, die Zeit steigt 26,4-fach. Das entspricht
+        einer Komplexität von etwa <strong>O(n<sup>1,29</sup>)</strong> — praktisch identisch zu Lagunas
+        O(n<sup>1,25</sup>), nur auf doppeltem Niveau. Beide Modelle dämpfen den quadratischen
+        Attention-Anteil erfolgreich, Qwen3.6 über lineare Attention, Laguna über Sliding Windows.</p>
+
+      <div class="note">
+        <h4>Tokenisierung beachten</h4>
+        <p>Derselbe Prompttext ergibt bei Qwen3.6 <strong>16 384</strong> Token, bei Laguna
+          <strong>18 699</strong>. Qwen3.6 tokenisiert rund 12 % dichter. Beim Vergleich absoluter
+          TTFT-Werte ist das mitzudenken; die tok/s-Raten sind davon nicht betroffen.</p>
+      </div>
+    </section>
+
+    <!-- ================= Speicher ================= -->
+    <section id="speicher">
+      <h2>Speicher</h2>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Kennzahl</th><th class="num">Qwen3.6 NVFP4</th><th class="num">Laguna INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Gewichte</td><td class="num best">23,45 GiB</td><td class="num">69,34 GiB</td></tr>
+            <tr><td class="rowlab">Ladezeit</td><td class="num">125,7 s</td><td class="num best">115,1 s</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num best">3 366 051</td><td class="num">1 001 532</td></tr>
+            <tr><td class="rowlab">KV je Token</td><td class="num best">≈ 25 KiB</td><td class="num">38,8 KiB</td></tr>
+            <tr><td class="rowlab">Concurrency bei 262k</td><td class="num best">12,84×</td><td class="num">3,82×</td></tr>
+            <tr><td class="rowlab">Startdauer gesamt</td><td class="num">≈ 14 min</td><td class="num best">≈ 3 min</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Der dreifache KV-Cache speist sich aus zwei Quellen: 46 GiB weniger Gewichte und ein um ein
+        Drittel niedrigerer Verbrauch pro Token. Letzterer folgt aus der linearen Attention — nur etwa
+        ein Viertel der 40 Layer skaliert mit der Sequenzlänge.</p>
+
+      <p>Dass die Ladezeit trotz eines Drittels der Datenmenge nicht kürzer ausfällt, liegt am kalten
+        Seitencache: Laguna war beim Vergleichslauf bereits mehrfach geladen worden.</p>
+    </section>
+
+    <!-- ================= Fallstricke ================= -->
+    <section id="fallstricke">
+      <h2>Fallstricke</h2>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">Ausgabe im Feld <code>reasoning</code></td>
+              <td>Streaming-Deltas enthalten kein <code>content</code>; TTFT bleibt ungesetzt, Decode-Rate wird über die Gesamtzeit gerechnet</td>
+              <td>Harness auf <code>content</code>, <code>reasoning</code> und <code>reasoning_content</code> prüfen lassen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Erste Anfrage als Messung genommen</td>
+              <td>3,8 statt 75 tok/s — Faktor 20 daneben</td>
+              <td>Expliziter Aufwärmlauf vor der Messung</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Präfix-Cache stillschweigend wirkungslos</td>
+              <td>„warme" Werte identisch zu kalten, ohne Fehlermeldung</td>
+              <td>Gegen eine echte Kaltmessung mit einmaligem Präfix prüfen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Multimodalität unerwartet</td>
+              <td><code>model_visual.safetensors</code> belegt Speicher auch bei reinem Textbetrieb</td>
+              <td>Vor dem Laden <code>config.json</code> auf <code>vision_config</code> prüfen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Falscher Modellname</td>
+              <td>Suche nach <em>36B-A3B</em> liefert null Treffer</td>
+              <td>Die MoE-Variante heißt <strong>35B</strong>-A3B</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Spekulationsmethode raten</td>
+              <td>vLLM kennt sowohl <code>mtp</code> als auch <code>qwen3_next_mtp</code></td>
+              <td>Für Qwen3.6 ist <code>mtp</code> korrekt; die erkannte Architektur im Log bestätigt es</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Tokenisierung unterschiedlich</td>
+              <td>derselbe Text ergibt 12 % weniger Token als bei Laguna</td>
+              <td>Absolute TTFT nur bei gleicher Tokenzahl vergleichen, sonst über tok/s normieren</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="deep">
+        <summary>Die Harness-Korrektur im Detail</summary>
+        <div class="deep-body">
+          <p>Der Streaming-Delta von Qwen3.6 sieht so aus:</p>
+          <pre>data: {"choices":[{"delta":{<span class="hl">"reasoning"</span>:"Here"},...}]}
+data: {"choices":[{"delta":{<span class="hl">"reasoning"</span>":"'s a thinking process"},...}]}</pre>
+          <p>Die ursprüngliche Auswertung prüfte ausschließlich <code>delta["content"]</code>. Folge:
+            <code>ttft</code> blieb <code>None</code>, der Chunk-Zähler bei null, und die Decode-Zeit
+            wurde als <code>gesamt - 0</code> berechnet — also inklusive Prefill.</p>
+          <p>Die Korrektur ist additiv und ändert das Verhalten für Antworten im
+            <code>content</code>-Feld nicht:</p>
+          <pre># vorher
+if delta.get("content"):
+
+# nachher
+if any(delta.get(f) for f in ("content", "reasoning", "reasoning_content")):</pre>
+          <p>Damit bleiben die Laguna-Messungen unverändert gültig — dort schlug die Initialisierung des
+            Reasoning-Parsers fehl, sodass die gesamte Ausgabe ohnehin als <code>content</code> kam.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= Vergleich ================= -->
+    <section id="vergleich">
+      <h2>Vergleich mit Laguna-S-2.1</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Beide auf vLLM 0.25.1, identischer Harness, identische Prompts</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">Laguna INT4</th><th class="num">Qwen3.6 NVFP4</th><th class="num">Faktor</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">20,6</td><td class="num">60,7</td><td class="num best">2,94×</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">31,7</td><td class="num">101,3</td><td class="num best">3,19×</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">52,8</td><td class="num">180,7</td><td class="num best">3,42×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">23,8</td><td class="num">63,5</td><td class="num best">2,67×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">39,0</td><td class="num">121,2</td><td class="num best">3,11×</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">64,3</td><td class="num">201,2</td><td class="num best">3,13×</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">13,1</td><td class="num">16,0</td><td class="num">1,23×</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num">38,9</td><td class="num">18,8</td><td class="num worse">0,48×</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num">64,6</td><td class="num">20,3</td><td class="num worse">0,31×</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">1</td><td class="num">24,0</td><td class="num">16,5</td><td class="num worse">0,69×</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">2</td><td class="num">31,1</td><td class="num">19,2</td><td class="num worse">0,62×</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">4</td><td class="num">39,5</td><td class="num">20,3</td><td class="num worse">0,51×</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Das Profil ist klar getrennt: <strong>Decode geht dreifach an Qwen3.6, langer wiederkehrender
+        Kontext geht an Laguna.</strong> Die Prefill-Zeilen messen dabei nicht die Rechenleistung —
+        dort ist Qwen3.6 doppelt so schnell — sondern den Cache-Effekt, den nur Laguna hat.</p>
+    </section>
+
+    <!-- ================= Empfehlung ================= -->
+    <section id="empfehlung">
+      <h2>Empfehlung</h2>
+
+      <h3>Qwen3.6-35B-A3B-NVFP4 für Durchsatz und Interaktivität</h3>
+      <p>Dreifaches Decode-Tempo, dreifacher KV-Cache, ein Drittel des Speicherbedarfs, TTFT unter
+        0,2 s. Für Chat, Codevervollständigung und alles, wo pro Anfrage ein überschaubarer Kontext
+        anfällt, ist es auf dieser Box die klar bessere Wahl.</p>
+
+      <h3>Laguna-S-2.1-INT4 für lange wiederkehrende Kontexte</h3>
+      <p>Ab etwa dem vierten Turn mit demselben 16k-Kontext liegt Laguna vorn, weil sein Präfix-Cache
+        greift. Für Agenten, die eine wachsende Historie mitschleppen, kann das den dreifachen
+        Rechenvorteil von Qwen3.6 aufwiegen.</p>
+
+      <h3>Offene Optimierung</h3>
+      <p>Die Concurrency-Messung endet bei vier Streams, obwohl Qwen3.6 dort noch 77 % der
+        Einzelstream-Rate hält und der KV-Cache 12,84 parallele Vollkontext-Requests zuließe. Höhere
+        Stufen wurden nicht gemessen und dürften weiter skalieren.</p>
+    </section>
+
+    <!-- ================= Limitationen ================= -->
+    <section id="limits">
+      <h2>Limitationen</h2>
+      <ul>
+        <li><strong>Reasoning dominiert die Ausgabe.</strong> Qwen3.6 denkt sichtbar; bei 256 Token
+          Limit besteht die Ausgabe fast vollständig aus Reasoning. Gemessen wurde die
+          Token-Erzeugungsrate, nicht die Zeit bis zu einer fertigen Antwort. Für Hardware- und
+          Engine-Vergleiche ist das die richtige Größe, für Wartezeiten aus Nutzersicht nicht.</li>
+        <li><strong>Nur eine Engine.</strong> Ausschließlich vLLM 0.25.1 vermessen; SGLang wurde für
+          Qwen3.6 nicht getestet.</li>
+        <li><strong>Nur eine Quantisierung.</strong> Von den acht verfügbaren 4-Bit-Varianten wurde nur
+          <code>RedHatAI/…-NVFP4</code> gemessen. Ob AWQ, GPTQ oder AutoRound auf sm_121 nennenswert
+          abweichen, ist offen.</li>
+        <li><strong>Erklärung des fehlenden Cache-Effekts unbelegt.</strong> Das Verhalten ist gemessen,
+          die Zurückführung auf lineare Attention aus der Konfiguration abgeleitet.</li>
+        <li><strong>Concurrency nur bis 4.</strong> Das Skalierungspotenzial wurde nicht ausgereizt.</li>
+        <li><strong>Multimodalität ungenutzt.</strong> Alle Messungen mit reinen Textanfragen; der
+          Vision-Encoder belegte Speicher, wurde aber nie beansprucht.</li>
+        <li><strong>Je eine Messreihe.</strong> Drei Wiederholungen je Messpunkt, kein Mittel über
+          mehrere Sitzungen.</li>
+      </ul>
+    </section>
+
+    <!-- ================= Glossar ================= -->
+    <section id="glossar">
+      <h2>Glossar</h2>
+      <dl class="glossary">
+        <div class="term">
+          <dt>A3B</dt>
+          <dd>Namenskonvention für „3 Mrd. aktive Parameter". Bei MoE-Modellen entscheidet diese Zahl
+            über das Decode-Tempo, die Gesamtparameterzahl über den Speicherbedarf.</dd>
+        </div>
+        <div class="term">
+          <dt>MTP</dt>
+          <dd>Multi-Token-Prediction. Ein mitgelieferter Kopf sagt mehrere Token auf einmal voraus, die
+            das Hauptmodell parallel verifiziert. Wirkt wie Speculative Decoding ohne separates
+            Draft-Modell.</dd>
+        </div>
+        <div class="term">
+          <dt>Lineare Attention</dt>
+          <dd>Attention-Variante mit sequenziell fortgeschriebenem Zustand konstanter Größe statt eines
+            mit der Sequenzlänge wachsenden KV-Caches. Spart Speicher, verhindert aber die stückweise
+            Wiederverwendung eines Präfix.</dd>
+        </div>
+        <div class="term">
+          <dt>NVFP4</dt>
+          <dd>NVIDIAs Microscaling-Format: FP4-Werte im E2M1-Layout mit FP8-E4M3-Skalen je 16 Werte.
+            Blackwell-Tensor-Cores verarbeiten es nativ.</dd>
+        </div>
+        <div class="term">
+          <dt>compressed-tensors</dt>
+          <dd>Quantisierungs-Container, den vLLM und SGLang direkt lesen. Alternative zu NVIDIAs
+            <code>modelopt</code>-Format; beide können NVFP4 enthalten.</dd>
+        </div>
+        <div class="term">
+          <dt>Präfix-Cache</dt>
+          <dd>Wiederverwendung der KV-Tensoren eines bereits verarbeiteten Prompt-Anfangs. Heißt bei
+            vLLM Automatic Prefix Caching, bei SGLang RadixAttention.</dd>
+        </div>
+        <div class="term">
+          <dt>TTFT</dt>
+          <dd>Time To First Token. Bestimmt die gefühlte Reaktionszeit und wird bei langen Prompts vom
+            Prefill dominiert.</dd>
+        </div>
+        <div class="term">
+          <dt>sm_121a</dt>
+          <dd>Compute Capability 12.1 der GB10-GPU. CUDA-Kernel müssen dafür übersetzt sein; auf dieser
+            Architektur läuft NVFP4 über FlashInfer-CUTLASS nativ.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ================= Artefakte ================= -->
+    <section id="artefakte">
+      <h2>Artefakte</h2>
+
+      <dl class="spec">
+        <dt>start-vllm-qwen36.sh</dt><dd>Startskript, NVFP4 mit MTP, 262k Kontext</dd>
+        <dt>bench.py</dt><dd>Durchsatz und TTFT, mit der Korrektur für das <code>reasoning</code>-Feld</dd>
+        <dt>prefill.py</dt><dd>Kaltes Prefill über 5 Längenstufen bis 198 163 Token</dd>
+        <dt>ergebnisse_qwen36.json</dt><dd>alle 12 Messpunkte</dd>
+        <dt>prefill_qwen36.json</dt><dd>5 Prefill-Stufen</dd>
+        <dt>qwen36.log</dt><dd>Startprotokoll</dd>
+      </dl>
+
+      <div class="note">
+        <p>Alle Dateien in <code>~/bench/</code>. Das Modell verbleibt mit 24 GB im HuggingFace-Cache,
+          der FlashInfer-Kernel-Cache ist warm — ein Neustart dauert rund vier Minuten.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Testprotokoll Qwen3.6-35B-A3B-NVFP4 auf DGX Spark GB10 · 1 Serverstart, 12 Messpunkte,
+    5 Prefill-Stufen · Begleitdokument zum Testprotokoll Laguna-S-2.1 · alle Werte gemessen.
+  </footer>
+
+</div>
+</body>
+</html>

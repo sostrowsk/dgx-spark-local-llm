@@ -1,0 +1,31 @@
+{
+  "engine": "gemma4-int4",
+  "modell": "cyankiwi/gemma-4-26B-A4B-it-qat-AWQ-INT4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4148,
+      "ttft_s_median": 0.8,
+      "prefill_tps": 5170
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 16265,
+      "ttft_s_median": 3.96,
+      "prefill_tps": 4108
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 64422,
+      "ttft_s_median": 30.54,
+      "prefill_tps": 2109
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 131164,
+      "ttft_s_median": 98.92,
+      "prefill_tps": 1326
+    }
+  ],
+  "hinweis": "letzte Stufe (~215k) bewusst ausgelassen, analog zum NVFP4-Lauf"
+}

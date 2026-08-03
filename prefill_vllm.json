@@ -1,0 +1,18 @@
+{
+  "engine": "vllm",
+  "modell": "poolside/Laguna-S-2.1-NVFP4",
+  "stufen": [
+    {
+      "stufe": "2k",
+      "prompt_tokens": 4720,
+      "ttft_s_median": 2.301,
+      "prefill_tps": 2051
+    },
+    {
+      "stufe": "8k",
+      "prompt_tokens": 18820,
+      "ttft_s_median": 9.32,
+      "prefill_tps": 2019
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "engine": "qwen36",
+  "modell": "RedHatAI/Qwen3.6-35B-A3B-NVFP4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4053,
+      "ttft_s_median": 0.8,
+      "prefill_tps": 5064
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 16384,
+      "ttft_s_median": 3.091,
+      "prefill_tps": 5301
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 65362,
+      "ttft_s_median": 16.208,
+      "prefill_tps": 4033
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 129280,
+      "ttft_s_median": 42.244,
+      "prefill_tps": 3060
+    },
+    {
+      "stufe": "~215k",
+      "prompt_tokens": 198163,
+      "ttft_s_median": 81.58,
+      "prefill_tps": 2429
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "engine": "gemma4-nvfp4",
+  "base_url": "http://localhost:8000",
+  "modell": "RedHatAI/gemma-4-26B-A4B-it-NVFP4",
+  "laeufe": [
+    {
+      "szenario": "prosa_decode",
+      "concurrency": 1,
+      "ok": 3,
+      "fehler": [],
+      "ttft_s_median": 0.036,
+      "decode_tps_median": 53.524,
+      "gesamt_tps": 53.03,
+      "in_tokens": 36,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "prosa_decode",
+      "concurrency": 2,
+      "ok": 6,
+      "fehler": [],
+      "ttft_s_median": 0.036,
+      "decode_tps_median": 50.853,
+      "gesamt_tps": 100.96,
+      "in_tokens": 36,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "prosa_decode",
+      "concurrency": 4,
+      "ok": 12,
+      "fehler": [],
+      "ttft_s_median": 0.069,
+      "decode_tps_median": 43.23,
+      "gesamt_tps": 170.55,
+      "in_tokens": 36,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "code_decode",
+      "concurrency": 1,
+      "ok": 3,
+      "fehler": [],
+      "ttft_s_median": 0.042,
+      "decode_tps_median": 53.737,
+      "gesamt_tps": 53.11,
+      "in_tokens": 38,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "code_decode",
+      "concurrency": 2,
+      "ok": 6,
+      "fehler": [],
+      "ttft_s_median": 0.045,
+      "decode_tps_median": 51.3,
+      "gesamt_tps": 101.52,
+      "in_tokens": 38,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "code_decode",
+      "concurrency": 4,
+      "ok": 12,
+      "fehler": [],
+      "ttft_s_median": 0.078,
+      "decode_tps_median": 44.092,
+      "gesamt_tps": 173.57,
+      "in_tokens": 38,
+      "out_tokens": 256
+    },
+    {
+      "szenario": "prefill_8k",
+      "concurrency": 1,
+      "ok": 3,
+      "fehler": [],
+      "ttft_s_median": 0.093,
+      "decode_tps_median": 48.117,
+      "gesamt_tps": 27.65,
+      "in_tokens": 14954,
+      "out_tokens": 64
+    },
+    {
+      "szenario": "prefill_8k",
+      "concurrency": 2,
+      "ok": 6,
+      "fehler": [],
+      "ttft_s_median": 0.112,
+      "decode_tps_median": 44.836,
+      "gesamt_tps": 82.26,
+      "in_tokens": 14954,
+      "out_tokens": 64
+    },
+    {
+      "szenario": "prefill_8k",
+      "concurrency": 4,
+      "ok": 12,
+      "fehler": [],
+      "ttft_s_median": 0.153,
+      "decode_tps_median": 38.882,
+      "gesamt_tps": 142.54,
+      "in_tokens": 14954,
+      "out_tokens": 64
+    },
+    {
+      "szenario": "prefill_8k_wiederholt",
+      "concurrency": 1,
+      "ok": 3,
+      "fehler": [],
+      "ttft_s_median": 0.077,
+      "decode_tps_median": 47.568,
+      "gesamt_tps": 44.78,
+      "in_tokens": 14950,
+      "out_tokens": 64
+    },
+    {
+      "szenario": "prefill_8k_wiederholt",
+      "concurrency": 2,
+      "ok": 6,
+      "fehler": [],
+      "ttft_s_median": 0.097,
+      "decode_tps_median": 46.092,
+      "gesamt_tps": 85.52,
+      "in_tokens": 14950,
+      "out_tokens": 64
+    },
+    {
+      "szenario": "prefill_8k_wiederholt",
+      "concurrency": 4,
+      "ok": 12,
+      "fehler": [],
+      "ttft_s_median": 0.142,
+      "decode_tps_median": 38.74,
+      "gesamt_tps": 141.13,
+      "in_tokens": 14950,
+      "out_tokens": 64
+    }
+  ]
+}

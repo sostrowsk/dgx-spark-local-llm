@@ -1,0 +1,26 @@
+START 18:02:49 MAX_JOBS=1
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339] 
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.25.1
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339]   █▄█▀ █     █     █     █  model   poolside/Laguna-S-2.1-NVFP4
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:339] 
+(APIServer pid=22222) INFO 08-01 18:02:54 [api_utils.py:273] non-default args: {'model_tag': 'poolside/Laguna-S-2.1-NVFP4', 'enable_auto_tool_choice': True, 'tool_call_parser': 'poolside_v1', 'host': '0.0.0.0', 'model': 'poolside/Laguna-S-2.1-NVFP4', 'max_model_len': 65536, 'reasoning_parser': 'poolside_v1', 'gpu_memory_utilization': 0.89, 'max_num_seqs': 32, 'speculative_config': {'model': 'poolside/Laguna-S-2.1-DFlash-NVFP4', 'num_speculative_tokens': 15}}
+(APIServer pid=22222) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) INFO 08-01 18:02:55 [model.py:619] Resolved architecture: LagunaForCausalLM
+(APIServer pid=22222) INFO 08-01 18:02:55 [model.py:1776] Using max model len 65536
+(APIServer pid=22222) INFO 08-01 18:02:56 [model.py:619] Resolved architecture: DFlashLagunaForCausalLM
+(APIServer pid=22222) INFO 08-01 18:02:56 [model.py:1776] Using max model len 1048576
+(APIServer pid=22222) INFO 08-01 18:02:56 [speculative.py:1040] Overriding draft model max model len from 1048576 to 65536
+(APIServer pid=22222) INFO 08-01 18:02:56 [vllm.py:1042] Asynchronous scheduling is enabled.
+(APIServer pid=22222) INFO 08-01 18:02:56 [kernel.py:292] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=22222) WARNING 08-01 18:02:56 [vllm.py:1648] max_num_scheduled_tokens is set to 1600 based on the speculative decoding settings. This may lead to suboptimal performance. Consider increasing max_num_batched_tokens to accommodate the additional draft token slots, or decrease num_speculative_tokens or max_num_seqs.
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=22222) WARNING 08-01 18:02:57 [vllm.py:1486] Auto-initialization of reasoning token IDs failed. Please check whether your reasoning parser has implemented the `reasoning_start_str` and `reasoning_end_str`.
+(APIServer pid=22222) INFO 08-01 18:02:57 [compilation.py:312] Enabled custom fusions: act_quant

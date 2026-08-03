@@ -1,0 +1,36 @@
+{
+  "engine": "int4-long",
+  "modell": "poolside/Laguna-S-2.1-INT4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4689,
+      "ttft_s_median": 2.079,
+      "prefill_tps": 2255
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 18699,
+      "ttft_s_median": 8.125,
+      "prefill_tps": 2301
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 72443,
+      "ttft_s_median": 39.159,
+      "prefill_tps": 1850
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 149057,
+      "ttft_s_median": 100.436,
+      "prefill_tps": 1484
+    },
+    {
+      "stufe": "~215k",
+      "prompt_tokens": 221996,
+      "ttft_s_median": 181.33,
+      "prefill_tps": 1224
+    }
+  ]
+}

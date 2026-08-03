@@ -1,0 +1,31 @@
+{
+  "engine": "gemma4-nvfp4",
+  "modell": "RedHatAI/gemma-4-26B-A4B-it-NVFP4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4117,
+      "ttft_s_median": 0.57,
+      "prefill_tps": 7161
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 16386,
+      "ttft_s_median": 3.13,
+      "prefill_tps": 5238
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 64893,
+      "ttft_s_median": 27.09,
+      "prefill_tps": 2396
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 132105,
+      "ttft_s_median": 93.3,
+      "prefill_tps": 1416
+    }
+  ],
+  "hinweis": "letzte Stufe (~215k) abgebrochen, nicht gemessen"
+}
