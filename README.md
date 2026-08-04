@@ -95,6 +95,39 @@ These cost the most time and are the reason this repo exists.
 | Prefix cache silently ineffective | "warm" values identical to cold, no error | verify against a true cold measurement with a unique prefix |
 | Wrong CUDA wheel | missing sm_121a kernels on cu12x builds | on the Spark use `-cu130` on aarch64 only |
 | Missing Python headers | Triton JIT fails without `python3.12-dev` | `uv python install 3.12` ships them, no sudo needed |
+| Unpinned model revision | upstream moves `main`; a silent 93 GB re-download, then the server aborts on KV cache | pin `--revision`; see below |
+
+## Pinned revisions
+
+On 3 August 2026, poolside moved `main` of `Laguna-S-2.1-INT4` to a checkpoint that is **INT4 in name
+only**. Its `quantization_config` is unchanged — 4 bit, `type: int`, `pack-quantized`, group size 32 —
+but it exempts the experts of layers 40–47 from quantization, and it drops the KV cache scales:
+
+| | pinned `67dbeda4` | upstream `main` (3 Aug) |
+|---|---|---|
+| Checkpoint size | 66.96 GiB, 15 shards | 92.84 GiB, 19 shards |
+| Expert weights in bfloat16 | 626 tensors | 6,770 (+6,144 = 8 layers × 256 experts × 3) |
+| `k_scale` / `v_scale` | 96 | **0** |
+| KV cache per token | 38.8 KiB | 73.4 KiB |
+
+Both changes compound: 26 GiB more weights leave less room, and each token then costs twice the KV
+cache. At `--max-model-len 262144` the server no longer starts:
+
+```
+ValueError: To serve at least one request with the model's max seq len (262144),
+18.35 GiB KV cache is needed, which is larger than the available KV cache memory (8.72 GiB).
+```
+
+`start-vllm-int4.sh` therefore pins both the model and the DFlash draft:
+
+```bash
+MODELL_REV=67dbeda456e68139f281c40831f9d12049d8fc11
+DRAFT_REV=f6b32f4fb7ef2fb2ad481bb4c05433a2bf8b0ed1
+```
+
+**Every measurement in this repository comes from the pinned revision.** Numbers taken from
+upstream `main` are not comparable — different weights, half the KV cache, and a context window
+capped at roughly 121,840 tokens instead of 262,144.
 
 One claim circulating about this hardware is **wrong**: that `sgl_kernel`'s prebuilt wheels lack
 sm_121a and require a source rebuild. Verified with `cuobjdump` on the installed binaries:
