@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laguna-S-2.1 auf DGX Spark — Performance-Tests, Fallstricke, gescheiterte Versuche</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground: #F6F8F8;
+    --paper: #FFFFFF;
+    --ink: #0F1A1C;
+    --muted: #546366;
+    --rule: #D9E1E2;
+    --accent: #1A5E63;
+    --accent-wash: #E4EFEF;
+    --ok: #1F7A4D;
+    --ok-wash: #E6F2EB;
+    --fail: #B3261E;
+    --fail-wash: #FAEAE9;
+    --warn: #8A5A00;
+    --warn-wash: #FAF1DF;
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --s1: 0.25rem; --s2: 0.5rem; --s3: 0.75rem; --s4: 1rem;
+    --s5: 1.5rem; --s6: 2rem; --s7: 3rem; --s8: 4.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: var(--s6) var(--s5) var(--s8);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--s6);
+  }
+
+  @media (min-width: 1000px) {
+    .wrap { grid-template-columns: 230px minmax(0, 1fr); gap: var(--s7); align-items: start; }
+    .toc { position: sticky; top: var(--s5); }
+  }
+
+  /* ---------- Kopf ---------- */
+  .masthead { grid-column: 1 / -1; border-bottom: 3px solid var(--ink); padding-bottom: var(--s5); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 var(--s3);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(1.9rem, 4.4vw, 3rem);
+    line-height: 1.12; margin: 0 0 var(--s3); text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.02rem, 1.9vw, 1.22rem);
+    color: var(--muted); margin: 0; max-width: 62ch; line-height: 1.5;
+  }
+  .meta {
+    margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Navigation ---------- */
+  .toc nav { border-left: 2px solid var(--rule); padding-left: var(--s4); }
+  .toc h2 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 var(--s3); font-weight: 600;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; display: flex; flex-direction: column; gap: 2px; }
+  .toc li { counter-increment: toc; }
+  .toc a {
+    display: block; padding: 4px 0; color: var(--muted); text-decoration: none;
+    font-size: 0.85rem; line-height: 1.35; border-bottom: 1px solid transparent;
+  }
+  .toc a::before { content: counter(toc) "."; font-family: var(--mono); font-size: 0.72rem; color: var(--accent); margin-right: 6px; }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); }
+
+  /* ---------- Inhalt ---------- */
+  main { min-width: 0; display: flex; flex-direction: column; gap: var(--s7); }
+  section { scroll-margin-top: var(--s5); }
+  h2 {
+    font-family: var(--serif); font-size: clamp(1.35rem, 2.7vw, 1.85rem); font-weight: 600;
+    margin: 0 0 var(--s4); line-height: 1.2; text-wrap: balance;
+    padding-bottom: var(--s2); border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-family: var(--sans); font-size: 1.02rem; font-weight: 650; margin: var(--s5) 0 var(--s3);
+    letter-spacing: -0.005em;
+  }
+  h4 { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+       color: var(--muted); margin: var(--s4) 0 var(--s2); font-weight: 600; }
+  p { margin: 0 0 var(--s4); max-width: 72ch; }
+  main ul, main ol { max-width: 72ch; margin: 0 0 var(--s4); padding-left: var(--s5); }
+  main li { margin-bottom: var(--s2); }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--accent-wash);
+    padding: 1px 5px; border-radius: 3px; color: var(--accent);
+  }
+
+  /* ---------- TL;DR ---------- */
+  .tldr { background: var(--ink); color: #EAF0F0; border-radius: 4px; padding: var(--s5) var(--s5) var(--s4); }
+  .tldr h2 { color: #FFF; border-bottom-color: rgba(255,255,255,0.22); }
+  .tldr p { color: #C3D0D1; }
+  .tldr code { background: rgba(255,255,255,0.12); color: #9FD8D6; }
+  .tldr-grid { display: grid; gap: var(--s4); grid-template-columns: 1fr; margin-top: var(--s4); }
+  @media (min-width: 640px) { .tldr-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tldr-item { border-top: 2px solid var(--accent); padding-top: var(--s3); }
+  .tldr-item h3 { margin: 0 0 var(--s2); color: #FFF; font-size: 0.95rem; }
+  .tldr-item p { margin: 0; font-size: 0.9rem; line-height: 1.55; }
+
+  .headline-figs {
+    display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    margin: var(--s5) 0 0;
+  }
+  .fig { background: rgba(255,255,255,0.07); border-radius: 3px; padding: var(--s3) var(--s4); }
+  .fig .n {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 600; color: #7FCFCB;
+    display: block; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .fig .l { font-size: 0.76rem; color: #B4C3C4; display: block; margin-top: 4px; line-height: 1.35; }
+
+  /* ---------- Tabellen ---------- */
+  .scroller { overflow-x: auto; margin: 0 0 var(--s4); border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  caption {
+    caption-side: top; text-align: left; font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    padding: var(--s3) var(--s4) var(--s2);
+  }
+  th, td { padding: 7px var(--s3); text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); background: var(--ground);
+    position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.best { font-weight: 700; color: var(--accent); }
+  .rowlab { font-weight: 600; }
+
+  /* ---------- Statusmarken ---------- */
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 100px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-wash); color: var(--ok); }
+  .pill.fail { background: var(--fail-wash); color: var(--fail); }
+  .pill.warn { background: var(--warn-wash); color: var(--warn); }
+
+  /* ---------- Chronik ---------- */
+  .run { border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); margin-bottom: var(--s3); overflow: hidden; }
+  .run > summary {
+    padding: var(--s3) var(--s4); cursor: pointer; list-style: none;
+    display: grid; gap: var(--s2) var(--s4); align-items: baseline;
+    grid-template-columns: 2.1rem 1fr auto;
+  }
+  .run > summary::-webkit-details-marker { display: none; }
+  .run > summary:hover { background: var(--accent-wash); }
+  .run > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .run-n {
+    font-family: var(--mono); font-size: 1.05rem; font-weight: 700; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .run-t { font-weight: 600; font-size: 0.95rem; line-height: 1.35; }
+  .run-t small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; font-family: var(--mono); margin-top: 2px; }
+  .run-body { padding: 0 var(--s4) var(--s4) calc(var(--s4) + 2.1rem); border-top: 1px solid var(--rule); padding-top: var(--s4); }
+  .run-body p:last-child { margin-bottom: 0; }
+  .run.is-fail { border-left: 3px solid var(--fail); }
+  .run.is-ok { border-left: 3px solid var(--ok); }
+  .run.is-warn { border-left: 3px solid var(--warn); }
+
+  pre {
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.55; background: var(--ink);
+    color: #D5E0E1; padding: var(--s3) var(--s4); border-radius: 3px; overflow-x: auto; margin: 0 0 var(--s4);
+  }
+  pre .hl { color: #F0A9A2; }
+  pre .dim { color: #7E8F90; }
+
+  /* ---------- Callouts ---------- */
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    padding: var(--s3) var(--s4); margin: 0 0 var(--s4); border-radius: 0 3px 3px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.caution { border-left-color: var(--warn); background: var(--warn-wash); }
+  .note.error { border-left-color: var(--fail); background: var(--fail-wash); }
+  .note h4 { margin-top: 0; color: inherit; }
+
+  details.deep { border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); margin: 0 0 var(--s4); }
+  details.deep > summary {
+    padding: var(--s3) var(--s4); cursor: pointer; font-family: var(--mono);
+    font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  details.deep > summary:hover { background: var(--accent-wash); }
+  details.deep > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  details.deep[open] > summary { border-bottom: 1px solid var(--rule); }
+  .deep-body { padding: var(--s4); }
+  .deep-body > :last-child { margin-bottom: 0; }
+  .deep-body .scroller, .deep-body pre { margin-bottom: var(--s3); }
+
+  dl.spec { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: 0 0 var(--s4); font-size: 0.9rem; }
+  dl.spec dt { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+  dl.spec dd { margin: 0; }
+
+  .glossary { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; } }
+  .term { border-top: 2px solid var(--rule); padding-top: var(--s3); }
+  .term dt { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: var(--s1); }
+  .term dd { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: var(--s4); margin-top: var(--s5);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Testprotokoll · Inferenz-Benchmark</p>
+    <h1>Laguna-S-2.1 auf DGX Spark GB10</h1>
+    <p class="standfirst">vLLM gegen SGLang, NVFP4 gegen INT4 — vollständige Dokumentation aller Messläufe
+      einschließlich der sechs gescheiterten Serverstarts, zweier OOM-Kills und vier Fehldiagnosen.</p>
+    <div class="meta">
+      <span><b>Hardware</b> NVIDIA GB10 · sm_121a · 121 GB Unified Memory</span>
+      <span><b>Modell</b> poolside/Laguna-S-2.1 · 118B MoE, 8B aktiv</span>
+      <span><b>Serverstarts</b> 10 · davon 4 erfolgreich</span>
+      <span><b>Messreihen</b> 3 Konfigurationen × 12 Szenarien</span>
+    </div>
+  </header>
+
+  <aside class="toc">
+    <nav aria-label="Inhaltsübersicht">
+      <h2>Inhalt</h2>
+      <ol>
+        <li><a href="#tldr">Auf einen Blick</a></li>
+        <li><a href="#kern">Kernaussagen</a></li>
+        <li><a href="#aufbau">Testaufbau</a></li>
+        <li><a href="#methodik">Methodik</a></li>
+        <li><a href="#chronik">Chronik der Startversuche</a></li>
+        <li><a href="#fallstricke">Fallstricke</a></li>
+        <li><a href="#durchsatz">Durchsatz</a></li>
+        <li><a href="#latenz">Antwortlatenz</a></li>
+        <li><a href="#prefill">Prefill-Skalierung</a></li>
+        <li><a href="#speicher">Speicher und Start</a></li>
+        <li><a href="#fehldiagnosen">Fehldiagnosen</a></li>
+        <li><a href="#widerlegt">Widerlegte Annahmen</a></li>
+        <li><a href="#revision">Gepinnte Revisionen</a></li>
+        <li><a href="#empfehlung">Empfehlung</a></li>
+        <li><a href="#limits">Limitationen</a></li>
+        <li><a href="#glossar">Glossar</a></li>
+        <li><a href="#artefakte">Artefakte</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ================= TL;DR ================= -->
+    <section id="tldr" class="tldr">
+      <h2>Auf einen Blick</h2>
+      <p>Drei Serverkonfigurationen wurden vollständig vermessen. Beide Ausgangsannahmen — NVFP4 sei
+        die richtige Quantisierung, und SGLang scheitere auf sm_121 an fehlenden Kerneln — erwiesen sich
+        als falsch.</p>
+
+      <div class="tldr-grid">
+        <div class="tldr-item">
+          <h3>INT4 schlägt NVFP4 überall</h3>
+          <p>19–59 % mehr Durchsatz bei identischer Engine, fünffach kürzere Ladezeit, zehnfacher KV-Cache.
+            Der native FP4-Rechenpfad nützt nichts, wenn die Speicherbandbreite limitiert.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>vLLM führt beim Durchsatz</h3>
+          <p>13–17 % vor SGLang, mit leicht wachsendem Vorsprung bei höherer Concurrency — das Gegenteil
+            der verbreiteten Erwartung.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>SGLang führt bei der Latenz</h3>
+          <p>TTFT zwei- bis dreifach besser (0,19–0,27 s gegen 0,48–0,69 s) und 79 % mehr Durchsatz bei
+            wiederkehrendem Präfix — dort wirkt RadixAttention.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>sm_121a ist vorhanden</h3>
+          <p><code>common_ops.abi3.so</code> enthält sm_121a-Kernels im fertigen cu130-aarch64-Wheel.
+            SGLang lief ohne jeden Eigenbau.</p>
+        </div>
+      </div>
+
+      <div class="headline-figs">
+        <div class="fig"><span class="n">64,3</span><span class="l">tok/s Spitzendurchsatz<br>vLLM+INT4, Code, c=4</span></div>
+        <div class="fig"><span class="n">1 001 532</span><span class="l">Token KV-Cache<br>vLLM+INT4 bei 262k Kontext</span></div>
+        <div class="fig"><span class="n">O(n<sup>1,25</sup>)</span><span class="l">Prefill-Skalierung<br>nahezu linear statt quadratisch</span></div>
+        <div class="fig"><span class="n">6</span><span class="l">gescheiterte Serverstarts<br>von 10 Versuchen</span></div>
+      </div>
+    </section>
+
+    <!-- ================= Kernaussagen ================= -->
+    <section id="kern">
+      <h2>Kernaussagen</h2>
+
+      <h3>1. Bandbreite schlägt Rechenformat</h3>
+      <p>NVFP4 rechnet auf Blackwell nativ in FP4 auf den Tensor Cores, INT4 muss für die
+        Matrixmultiplikation dequantisieren. Auf einer Maschine mit 273 GB/s Speicherbandbreite ist das
+        irrelevant: entscheidend ist, wie viele Bytes pro Token bewegt werden. INT4 bewegt 26 GiB weniger
+        und gewinnt deshalb auch dort, wo NVFP4 seinen nativen Pfad ausspielen könnte.</p>
+
+      <h3>2. Der NVFP4-Checkpoint verbraucht doppelt so viel KV-Speicher pro Token</h3>
+      <p>77,7 KiB gegen 38,8 KiB bei INT4 — bei identischem Modell und identischer Engine. Zusammen mit
+        den 26 GiB größeren Gewichten führt das zu 94 135 statt 950 420 Token KV-Cache, also Faktor zehn.
+        Das deutet auf einen Fehler in diesem Build hin, nicht auf eine Eigenschaft des Formats.</p>
+
+      <h3>3. Der Engpass beim Start ist der Compiler, nicht das Modell</h3>
+      <p>Beide Engines übersetzen FlashInfer-Kernel zur Laufzeit. Ein einzelner <code>cicc</code>-Prozess
+        belegt bis zu 7,5 GB. Bei 95 GiB Gewichten auf 121 GB Gesamtspeicher entscheidet die Zahl paralleler
+        Compilerprozesse über Erfolg oder OOM-Kill.</p>
+
+      <h3>4. Präfix-Caching ist der stärkste Einzelhebel</h3>
+      <p>16 913 Token brauchen kalt 9,32 s, warm 0,30 s — Faktor 30. Für Agenten mit wachsender Historie
+        ist das wirksamer als jede Engine-Wahl.</p>
+
+      <h3>5. Hybride Attention hält lange Kontexte bezahlbar</h3>
+      <p>Bei 11,9-facher Prompt-Länge steigt die Prefill-Zeit nur 22,3-fach. Lagunas Aufteilung — 12 von
+        48 Layern volle Attention, 36 mit 512er Sliding Window — dämpft den quadratischen Anteil so weit,
+        dass 222 000 Token praktisch handhabbar bleiben.</p>
+    </section>
+
+    <!-- ================= Testaufbau ================= -->
+    <section id="aufbau">
+      <h2>Testaufbau</h2>
+
+      <h3>Hardware</h3>
+      <dl class="spec">
+        <dt>Produkt</dt><dd>GX10 (DGX-Spark-Plattform)</dd>
+        <dt>GPU</dt><dd>NVIDIA GB10, Compute Capability 12.1 (sm_121a)</dd>
+        <dt>CPU</dt><dd>20 Kerne, aarch64</dd>
+        <dt>Speicher</dt><dd>121 GB Unified Memory (124 546 MB), 16 GB Swap</dd>
+        <dt>Bandbreite</dt><dd>ca. 273 GB/s</dd>
+        <dt>Massenspeicher</dt><dd>NVMe, 916 GB</dd>
+        <dt>Betriebssystem</dt><dd>Ubuntu 24.04.4 LTS, Kernel 6.17.0-1029-nvidia</dd>
+        <dt>Treiber</dt><dd>NVIDIA 580.173.02, CUDA 13.0, nvcc 13.0.88</dd>
+      </dl>
+
+      <h3>Modell</h3>
+      <p><code>poolside/Laguna-S-2.1</code> — 118 Mrd. Parameter gesamt, 8 Mrd. aktiv pro Token
+        (Mixture-of-Experts), veröffentlicht am 22. Juli 2026 unter OpenMDW-1.1.</p>
+      <dl class="spec">
+        <dt>Layer</dt><dd>48 — davon 12 volle Attention, 36 Sliding-Window (Fenster 512)</dd>
+        <dt>Experten</dt><dd>256 geroutet (Top-10) plus 1 geteilter</dd>
+        <dt>Attention</dt><dd>Grouped-Query, 8 KV-Köpfe, Kopfdimension 128</dd>
+        <dt>Kontext</dt><dd><code>max_position_embeddings</code> 262 144, YaRN-Skalierung Faktor 32 von 8192</dd>
+        <dt>Quantisierung</dt><dd><code>compressed-tensors</code></dd>
+      </dl>
+
+      <h4>Gemessene Dateigrößen der Varianten</h4>
+      <div class="scroller">
+        <table>
+          <caption>Abgefragt über die HuggingFace-API, Summe aller Gewichtsdateien</caption>
+          <thead><tr><th>Variante</th><th class="num">Größe</th><th>auf 121 GB nutzbar?</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">BF16</td><td class="num">235,1 GB</td><td>nein</td></tr>
+            <tr><td class="rowlab">FP8</td><td class="num">131,3 GB</td><td>nein</td></tr>
+            <tr><td class="rowlab">NVFP4</td><td class="num">99,7 GB</td><td>ja, aber ohne Reserve</td></tr>
+            <tr><td class="rowlab">INT4</td><td class="num">71,9 GB</td><td>ja, mit Reserve</td></tr>
+            <tr><td class="rowlab">DFlash-NVFP4 / -INT4</td><td class="num">je 2,23 GB</td><td>Draft-Modell</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Software</h3>
+      <dl class="spec">
+        <dt>vLLM</dt><dd>0.25.1, aarch64-Wheel von PyPI</dd>
+        <dt>SGLang</dt><dd>0.5.16 mit <code>sgl-kernel 0.3.21+cu130</code></dd>
+        <dt>PyTorch</dt><dd>2.11.0+cu130 in beiden Umgebungen</dd>
+        <dt>FlashInfer</dt><dd>0.6.13 (vLLM-Umgebung)</dd>
+        <dt>Python</dt><dd>3.12.13, uv-verwaltet</dd>
+      </dl>
+
+      <details class="deep">
+        <summary>Warum nativ statt Docker — und warum ohne sudo</summary>
+        <div class="deep-body">
+          <p>Der ursprüngliche Plan sah Container für beide Engines vor, weil das den Vergleich
+            symmetrisch hält. Zwei Hindernisse erzwangen den Wechsel:</p>
+          <ul>
+            <li><strong>Kein Docker-Zugriff.</strong> Der Benutzer ist nicht Mitglied der Gruppe
+              <code>docker</code>; jeder Aufruf endete mit <code>permission denied while trying to
+              connect to the docker API at unix:///var/run/docker.sock</code>. Der erste Pull-Versuch
+              meldete trotzdem Exit-Code 0, weil <code>| tail -5</code> in der Pipeline den Exit-Code
+              der ersten Stufe verschluckte — der Fehlschlag fiel erst später auf.</li>
+            <li><strong>Kein passwortloses sudo.</strong> Damit ließ sich <code>python3.12-dev</code>
+              nicht nachinstallieren, das für die Triton-JIT-Header benötigt wird.</li>
+          </ul>
+          <p>Gelöst durch <code>uv python install 3.12</code>: die uv-eigene CPython-Distribution bringt
+            die Entwicklungs-Header mit, wodurch weder <code>sudo</code> noch das Systempaket nötig waren.
+            Beide Engines liefen anschließend in getrennten venvs auf identischer PyTorch-Basis — für den
+            Vergleich sogar sauberer als zwei Container mit womöglich abweichenden Abhängigkeiten.</p>
+        </div>
+      </details>
+
+      <details class="deep">
+        <summary>Nachweis der sm_121a-Kernels</summary>
+        <div class="deep-body">
+          <p>Die Behauptung, <code>sgl_kernel</code> decke sm_121a nicht ab und sei nur nach einem
+            Neubau aus dem Quellcode lauffähig, wurde zweistufig geprüft.</p>
+          <h4>Quellcode: sgl-kernel/CMakeLists.txt auf v0.5.16</h4>
+          <pre>if ("${CUDA_VERSION}" VERSION_GREATER_EQUAL "13.0")
+    ...
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        list(APPEND SGL_KERNEL_CUDA_FLAGS
+            "-gencode=arch=compute_110a,code=sm_110a"
+            <span class="hl">"-gencode=arch=compute_121a,code=sm_121a"</span>)</pre>
+          <p>Der Gencode wird also genau dann erzeugt, wenn CUDA ≥ 13.0 <em>und</em> aarch64 vorliegen —
+            exakt der <code>-cu130</code>-Build auf dieser Maschine. Im <code>else</code>-Zweig erhält
+            aarch64 stattdessen nur <code>sm_101a</code>; für cu12x-Wheels trifft die Behauptung also zu.</p>
+          <h4>Binary: cuobjdump über die installierten Bibliotheken</h4>
+          <div class="scroller">
+            <table>
+              <thead><tr><th>Bibliothek</th><th class="num">Größe</th><th>Enthaltene SM-Architekturen</th></tr></thead>
+              <tbody>
+                <tr><td class="rowlab">common_ops.abi3.so</td><td class="num">80 M</td><td>sm_90 · sm_90a · sm_100a · sm_103a · sm_110a · sm_120a · <strong>sm_121a</strong></td></tr>
+                <tr><td class="rowlab">spatial_ops.abi3.so</td><td class="num">196 K</td><td>sm_90 · sm_90a · sm_100a · sm_103a · sm_110a · sm_120a · <strong>sm_121a</strong></td></tr>
+                <tr><td class="rowlab">flashmla_ops.abi3.so</td><td class="num">12 M</td><td>sm_90a · sm_100a · sm_103a — kein sm_121</td></tr>
+                <tr><td class="rowlab">flash_ops.abi3.so</td><td class="num">309 M</td><td>nur sm_90a (FlashAttention-3, Hopper-exklusiv)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Die Hauptkernel-Bibliothek enthält sm_121a. Dass FA3 und FlashMLA fehlen, ist korrekt und
+            erwartbar — beide sind auf GB10 ohnehin nicht nutzbar. Genau diese zwei Targets deaktiviert
+            der kursierende Community-Patch; seine Diagnose war richtig, die Schlussfolgerung
+            „läuft nicht ohne Eigenbau" jedoch zu weitreichend.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= Methodik ================= -->
+    <section id="methodik">
+      <h2>Methodik</h2>
+
+      <p>Zwei eigene Messskripte, beide nur mit der Python-Standardbibliothek, beide gegen die
+        OpenAI-kompatible API, die vLLM und SGLang gleichermaßen anbieten. Dadurch bekommen beide Engines
+        exakt dieselben Anfragen.</p>
+
+      <h3>bench.py — Durchsatz und Antwortlatenz</h3>
+      <ul>
+        <li><strong>4 Szenarien</strong> × <strong>3 Concurrency-Stufen</strong> (1, 2, 4) ×
+          <strong>3 Wiederholungen</strong></li>
+        <li><code>stream: true</code> zur Messung der Zeit bis zum ersten Token</li>
+        <li><code>ignore_eos: true</code> erzwingt exakt <code>max_tokens</code> Ausgabetoken und
+          eliminiert damit EOS-Rauschen aus der tok/s-Rechnung</li>
+        <li><code>temperature: 0</code></li>
+        <li>Ein Aufwärmlauf vor der Messung, damit Graph-Capture und JIT nicht als Ausreißer einfließen</li>
+        <li>Berichtet werden Mediane über alle Wiederholungen</li>
+      </ul>
+
+      <h4>Die vier Szenarien</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Name</th><th class="num">Ausgabe</th><th>Zweck</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">prosa_decode</td><td class="num">256 Token</td><td>Decode-Rate an der Bandbreitendecke</td></tr>
+            <tr><td class="rowlab">code_decode</td><td class="num">256 Token</td><td>Decode auf Code, höhere DFlash-Akzeptanz erwartet</td></tr>
+            <tr><td class="rowlab">prefill_8k</td><td class="num">64 Token</td><td>Prefill-Durchsatz bei langem Prompt</td></tr>
+            <tr><td class="rowlab">prefill_8k_wiederholt</td><td class="num">64 Token</td><td>identischer Präfix — misst Präfix-Cache</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>prefill.py — kaltes Prefill</h3>
+      <p>Jeder Request erhält einen einmaligen Präfix: eine UUID wird in jeden Codeblock des generierten
+        Prompts eingewoben, sodass weder vLLMs Automatic Prefix Caching noch SGLangs RadixAttention
+        greifen kann. Gemessen wird ausschließlich die TTFT bei <code>max_tokens: 8</code>; daraus folgt
+        die reine Prefill-Rate.</p>
+
+      <div class="note caution">
+        <h4>Zwei Mängel der Methodik, die erst im Lauf auffielen</h4>
+        <p><strong>Der Präfix-Vergleich misslang.</strong> <code>prefill_8k</code> läuft dreimal pro
+          Concurrency-Stufe — schon nach dem ersten Request liegt der Präfix im Cache. Der Median über
+          drei Läufe misst also bereits den warmen Fall, und <code>prefill_8k_wiederholt</code> misst
+          denselben warmen Fall erneut. Die beabsichtigte Gegenüberstellung kalt gegen warm entfiel.
+          Nachträglich behoben durch <code>prefill.py</code>.</p>
+        <p><strong>Die Größenlabels lagen um Faktor zwei daneben.</strong> Die Schätzung von 68 Token pro
+          generiertem Codeblock war falsch, real sind es etwa 154. Die als „8k" bezeichneten Prompts
+          enthielten tatsächlich 16 909 bis 18 820 Token. In <code>prefill.py</code> wurden die Stufen
+          später nach den gemessenen Tokenzahlen umbenannt.</p>
+      </div>
+    </section>
+
+    <!-- ================= Chronik ================= -->
+    <section id="chronik">
+      <h2>Chronik der Startversuche</h2>
+
+      <p>Zehn Serverstarts waren nötig, um drei Konfigurationen zu vermessen. Die Reihenfolge trägt hier
+        Information: jeder Fehlschlag lieferte die Korrektur für den nächsten Versuch. Aufklappen zeigt
+        Ursache, Logauszug und Konsequenz.</p>
+
+      <details class="run is-fail">
+        <summary>
+          <span class="run-n">01</span>
+          <span class="run-t">vLLM + NVFP4 — Speicherreservierung zu hoch
+            <small>17:35 · abgebrochen nach &lt; 1 min</small></span>
+          <span class="pill fail">gescheitert</span>
+        </summary>
+        <div class="run-body">
+          <p>Gestartet mit <code>--gpu-memory-utilization 0.92</code>. Die Engine bricht vor dem Laden ab.</p>
+          <pre>ValueError: Free memory on device cuda:0 (110.73/121.63 GiB) on startup is
+less than desired GPU memory utilization (0.92, <span class="hl">111.9 GiB</span>). Decrease ...</pre>
+          <p><strong>Ursache:</strong> Das Betriebssystem belegte rund 11 GiB, sodass nur 110,73 der
+            121,63 GiB frei waren — knapp unter den geforderten 111,9 GiB.</p>
+          <p><strong>Korrektur:</strong> <code>--gpu-memory-utilization 0.89</code>.</p>
+        </div>
+      </details>
+
+      <details class="run is-fail">
+        <summary>
+          <span class="run-n">02</span>
+          <span class="run-t">vLLM + NVFP4 — OOM-Killer während der JIT-Kompilierung
+            <small>17:36–18:01 · 25 min verloren</small></span>
+          <span class="pill fail">gescheitert</span>
+        </summary>
+        <div class="run-body">
+          <p>Der Lauf kam weit: Gewichte geladen (95,63 GiB in 595,6 s), <code>torch.compile</code>
+            durchgelaufen (30,61 s). Danach zwölf Minuten Stille im Anwendungslog, dann war der
+            EngineCore-Prozess ein Zombie.</p>
+          <pre><span class="dim">Aug 01 18:01:30 dgx-spark kernel:</span> systemd invoked oom-killer: ...
+<span class="dim">Aug 01 18:01:30 dgx-spark kernel:</span> Out of memory: <span class="hl">Killed process 21394 (cicc)</span>
+    total-vm:10886376kB, <span class="hl">anon-rss:7529332kB</span>, UID:1000</pre>
+          <p><strong>Ursache:</strong> Nach dem Modell blieben etwa 26 GiB frei. <code>MAX_JOBS=4</code>
+            startete vier parallele <code>cicc</code>-Prozesse (CUDA-Compiler-Frontend) zu je rund
+            7,5 GB — zusammen 30 GB. Der OOM-Killer griff ein. Im Anwendungslog stand kein Fehler; die
+            Ursache war nur im Kernel-Log zu finden.</p>
+          <p><strong>Korrektur:</strong> <code>MAX_JOBS=1</code>. Die verbreitete Empfehlung
+            <code>MAX_JOBS=4</code> ist für die NVFP4-Variante auf dieser Box zu hoch angesetzt.</p>
+        </div>
+      </details>
+
+      <details class="run is-warn">
+        <summary>
+          <span class="run-n">03</span>
+          <span class="run-t">vLLM + NVFP4 — mit der Elternshell beendet
+            <small>18:02 · 26 Logzeilen</small></span>
+          <span class="pill warn">abgebrochen</span>
+        </summary>
+        <div class="run-body">
+          <p>Kein technischer Fehlschlag: der Prozess wurde abgeräumt, als die Sitzung endete. Kein
+            OOM-Eintrag im Kernel-Log, der Lauf kam nicht über die Initialisierung hinaus.</p>
+          <p><strong>Korrektur:</strong> Start künftig über <code>setsid nohup … &lt; /dev/null &amp;</code>,
+            damit der Server einen Sitzungswechsel überlebt.</p>
+          <div class="note">
+            <p>Nebenbefund: Ein <code>pkill -f "vllm serve"</code> beendete zweimal die eigene Shell mit
+              Exit-Code 143 bzw. 144, weil das Suchmuster in deren Kommandozeile stand. Prozesse besser
+              über <code>ps</code> ermitteln und per PID beenden.</p>
+          </div>
+        </div>
+      </details>
+
+      <details class="run is-ok">
+        <summary>
+          <span class="run-n">04</span>
+          <span class="run-t">vLLM + NVFP4 — erfolgreich, erste Messreihe
+            <small>21:06–21:23 · 17 min bis bereit</small></span>
+          <span class="pill ok">erfolgreich</span>
+        </summary>
+        <div class="run-body">
+          <p><code>MAX_JOBS=1</code>, <code>--gpu-memory-utilization 0.89</code>,
+            <code>--max-model-len 65536</code>.</p>
+          <pre>Model loading took <span class="hl">95.63 GiB</span> memory and 595.56 seconds
+Using '<span class="hl">FLASHINFER_CUTLASS</span>' NvFp4 MoE backend
+Available KV cache memory: <span class="hl">6.97 GiB</span>
+GPU KV cache size: <span class="hl">94,135 tokens</span>
+Maximum concurrency for 65,536 tokens per request: <span class="hl">1.44x</span></pre>
+          <p>Bestätigt nebenbei den nativen FP4-Pfad: <code>FLASHINFER_CUTLASS</code> statt eines
+            Marlin-Rückfalls. Der Smoke-Test lieferte 150 Token in 8,2 s.</p>
+          <p><strong>Kritische Kennzahl:</strong> 1,44× Concurrency bedeutet, dass nicht einmal
+            anderthalb Requests mit vollem Kontext gleichzeitig in den Speicher passen.</p>
+        </div>
+      </details>
+
+      <details class="run is-fail">
+        <summary>
+          <span class="run-n">05</span>
+          <span class="run-t">SGLang + NVFP4 — Graph-Capturing bei 0/58
+            <small>21:40–22:01 · nach 10 min abgebrochen</small></span>
+          <span class="pill fail">gescheitert</span>
+        </summary>
+        <div class="run-body">
+          <p><code>MAX_JOBS=1</code>, <code>--mem-fraction-static 0.88</code>. Die Gewichte luden sauber
+            (618,01 s, 93,16 GB), danach blieb der Fortschrittsbalken des CUDA-Graph-Capturings zehn
+            Minuten auf Schritt 0 von 58 stehen.</p>
+          <pre>Capture target prefill CUDA graph begin. backend=breakable
+Capturing num tokens (num_tokens=8192 avail_mem=11.78 GB): <span class="hl">0%| | 0/58</span></pre>
+          <p>Ein <code>cicc</code>-Prozess lief mit 99,9 % CPU, der FlashInfer-Cache wuchs von 80 auf
+            179 MB — es wurde also kompiliert, nur sehr langsam.</p>
+          <p><strong>Damalige Diagnose:</strong> „hängt". <strong>Tatsächlich:</strong> der erste
+            Capture-Schritt enthält die gesamte Kernel-Übersetzung und dauert allein 114 s; die
+            folgenden 57 laufen um Größenordnungen schneller. Der Abbruch war voreilig
+            (siehe <a href="#fehldiagnosen">Fehldiagnosen</a>).</p>
+        </div>
+      </details>
+
+      <details class="run is-fail">
+        <summary>
+          <span class="run-n">06</span>
+          <span class="run-t">SGLang + NVFP4 — Speicher auf 1 GB, präventiv abgebrochen
+            <small>22:06–22:25 · MAX_JOBS=3</small></span>
+          <span class="pill fail">gescheitert</span>
+        </summary>
+        <div class="run-body">
+          <p>Annahme: mehr parallele Compilerjobs beschleunigen das Capturing. Gewichte in 549 s geladen,
+            danach zwei <code>cicc</code>-Prozesse — und der freie Systemspeicher fiel auf <strong>1 GB</strong>.
+            Der Balken stand weiterhin bei 0/58.</p>
+          <p><strong>Abgebrochen,</strong> bevor der OOM-Killer zuschlagen konnte. Ein zweiter OOM hätte
+            die zehn Minuten Ladezeit erneut gekostet.</p>
+        </div>
+      </details>
+
+      <details class="run is-warn">
+        <summary>
+          <span class="run-n">07</span>
+          <span class="run-t">SGLang + NVFP4 — auf Anweisung abgebrochen
+            <small>22:25–22:35 · mem-fraction 0.78</small></span>
+          <span class="pill warn">abgebrochen</span>
+        </summary>
+        <div class="run-body">
+          <p>Dritter Anlauf mit umgekehrter Priorität: <code>--mem-fraction-static 0.78</code> statt 0,88,
+            also 26,8 statt 14,6 GiB Systemluft für den Compiler, zulasten des KV-Caches. Der Lauf wurde
+            während des Ladens der Gewichte abgebrochen.</p>
+          <p><strong>Zwischenfazit an dieser Stelle:</strong> SGLang scheitert mit NVFP4 auf dieser Box
+            nicht an fehlenden Kerneln, sondern am Startpfad. Diese Einschätzung erwies sich später als
+            ebenfalls falsch — siehe Versuch 09.</p>
+        </div>
+      </details>
+
+      <details class="run is-ok">
+        <summary>
+          <span class="run-n">08</span>
+          <span class="run-t">vLLM + INT4 — erfolgreich, Quantisierungsvergleich
+            <small>23:19–23:30 · 11 min bis bereit</small></span>
+          <span class="pill ok">erfolgreich</span>
+        </summary>
+        <div class="run-body">
+          <p>Alle Leistungsparameter identisch zu Versuch 04, nur die Quantisierung unterscheidet sich.</p>
+          <pre>Model loading took <span class="hl">69.34 GiB</span> memory and <span class="hl">113.64 seconds</span>
+Available KV cache memory: <span class="hl">35.2 GiB</span>
+GPU KV cache size: <span class="hl">950,420 tokens</span>
+Maximum concurrency for 65,536 tokens per request: <span class="hl">14.50x</span></pre>
+          <p>Gegenüber NVFP4: 26,3 GiB weniger Gewichte, fünffach kürzere Ladezeit, zehnfacher KV-Cache.
+            Der Faktor zehn setzt sich zusammen aus fünffach mehr Speicher <em>und</em> doppelt so
+            effizienter Nutzung pro Token (38,8 statt 77,7 KiB).</p>
+        </div>
+      </details>
+
+      <details class="run is-ok">
+        <summary>
+          <span class="run-n">09</span>
+          <span class="run-t">SGLang + INT4 — erfolgreich, Capturing in 3:33
+            <small>23:37–23:43 · 6 min bis bereit</small></span>
+          <span class="pill ok">erfolgreich</span>
+        </summary>
+        <div class="run-body">
+          <p><code>MAX_JOBS=2</code>, <code>--mem-fraction-static 0.85</code>. Der erste Capture-Schritt
+            dauerte erneut 114,6 s, und tqdm extrapolierte daraus:</p>
+          <pre>Capturing num tokens (num_tokens=8192): 2%|▏ | 1/58 [01:54&lt;<span class="hl">1:48:53</span>, 114.62s/it]</pre>
+          <p>Tatsächlich fiel die Rate danach steil ab — 51 s, 31 s, 21 s, 16 s … bis auf 6 Schritte
+            pro Sekunde am Ende:</p>
+          <pre>Capturing num tokens (num_tokens=4): <span class="hl">100%|██████████| 58/58 [03:33&lt;00:00, 3.68s/it]</span>
+[23:43:42] max_total_num_tokens=<span class="hl">185897</span>, max_running_requests=48
+[23:43:47] The server is fired up and ready to roll!</pre>
+          <p><strong>Damit war die Diagnose aus den Versuchen 05 bis 07 widerlegt:</strong> SGLang hing
+            nie, es war nur im ersten Schritt langsam. Die abgebrochenen NVFP4-Versuche wären
+            wahrscheinlich ebenfalls durchgelaufen.</p>
+        </div>
+      </details>
+
+      <details class="run is-ok">
+        <summary>
+          <span class="run-n">10</span>
+          <span class="run-t">vLLM + INT4 bei 262k Kontext — erfolgreich
+            <small>00:21–00:24 · 3 min bis bereit</small></span>
+          <span class="pill ok">erfolgreich</span>
+        </summary>
+        <div class="run-body">
+          <p><code>--max-model-len 262144</code> statt 65 536, sonst unverändert.</p>
+          <pre>Model loading took 69.34 GiB memory and 115.06 seconds
+GPU KV cache size: <span class="hl">1,001,532 tokens</span>
+Maximum concurrency for 262,144 tokens per request: <span class="hl">3.82x</span></pre>
+          <p><strong>Befund:</strong> Das vervierfachte Kontextfenster kostete keinen KV-Cache — es
+            brachte sogar 5 % mehr (1 001 532 statt 950 420 Token), vermutlich durch günstigere
+            Blockaufteilung. Es gibt keinen Grund, unter dem Maximum des Checkpoints zu bleiben.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= Fallstricke ================= -->
+    <section id="fallstricke">
+      <h2>Fallstricke</h2>
+
+      <p>Geordnet nach Ursache, mit der jeweils wirksamen Gegenmaßnahme.</p>
+
+      <h3>Speicher und Compiler</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">Paralleler JIT-Fan-out</td>
+              <td>OOM-Kill von <code>cicc</code>, kein Fehler im Anwendungslog</td>
+              <td><code>MAX_JOBS=1</code> bei kaltem FlashInfer-Cache</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Reservierung über dem Freibestand</td>
+              <td><code>ValueError</code> vor dem Laden</td>
+              <td><code>--gpu-memory-utilization</code> ≤ 0,89</td>
+            </tr>
+            <tr>
+              <td class="rowlab">mem-fraction-static missverstanden</td>
+              <td>kleineres Modell schafft <em>keine</em> Systemluft</td>
+              <td>Der Parameter reserviert unabhängig von der Modellgröße; Ersparnis wandert in den KV-Cache</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Verzögerte Speicherfreigabe</td>
+              <td>Neustart scheitert direkt nach dem Stoppen</td>
+              <td>Auf Freigabe warten, hier 5–15 s bis 118 GB frei</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Page-Cache-Verdrängung</td>
+              <td>Shard-Laderate bricht von 2,7 auf 30 s/Shard ein</td>
+              <td>Unvermeidlich bei 95 GiB Gewichten; Swap-Aktivität bleibt moderat</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Installation</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">Torch-ABI-Bruch</td>
+              <td><code>undefined symbol: _ZNK2at10TensorBase14const_data_ptrIiLi0EEEPKT_v</code></td>
+              <td><code>torch==2.11.0</code> — die von sglang 0.5.16 gepinnte Version</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Veraltete Rezepte</td>
+              <td><code>--force-reinstall torch</code> zieht die neueste Version (2.13.0)</td>
+              <td>Schritt weglassen; die cu130-Wheels bringen die passende Version mit</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Falsches CUDA-Wheel</td>
+              <td>fehlende sm_121a-Kernels bei cu12x-Builds</td>
+              <td>Auf dem Spark ausschließlich <code>-cu130</code> auf aarch64 verwenden</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Fehlende Python-Header</td>
+              <td>Triton-JIT scheitert ohne <code>python3.12-dev</code></td>
+              <td><code>uv python install 3.12</code> — bringt Header mit, kein sudo nötig</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Betrieb und Werkzeuge</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">Exit-Code in Pipeline verschluckt</td>
+              <td><code>docker pull … | tail -5</code> meldet Erfolg trotz <code>permission denied</code></td>
+              <td>Exit-Code der ersten Pipeline-Stufe prüfen, nicht der letzten</td>
+            </tr>
+            <tr>
+              <td class="rowlab"><code>pkill -f</code> trifft die eigene Shell</td>
+              <td>Kommando endet mit Exit 143/144, Ziel läuft weiter</td>
+              <td>PIDs über <code>ps</code> ermitteln, gezielt beenden</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Server stirbt mit der Sitzung</td>
+              <td>Log bricht nach wenigen Zeilen ab, kein Fehler</td>
+              <td><code>setsid nohup … &lt; /dev/null &amp;</code></td>
+            </tr>
+            <tr>
+              <td class="rowlab">tqdm-Restzeit als Tatsache gelesen</td>
+              <td>angezeigt 1:48:53, real 3:33</td>
+              <td>Bei Verläufen mit einmaliger Anlaufhürde die Rate über mehrere Schritte beobachten</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Verwaiste <code>.incomplete</code>-Dateien</td>
+              <td>13 GB belegt nach abgebrochenem Download</td>
+              <td>Nach Abbruch aufräumen; <code>hf download</code> setzt sonst korrekt fort</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Modell und API</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">Reasoning-Parser initialisiert nicht</td>
+              <td><code>Auto-initialization of reasoning token IDs failed</code>; Reasoning landet im Antworttext</td>
+              <td>Ungelöst — entwertet die Trennung Code gegen Prosa</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Prompt über <code>max_model_len</code></td>
+              <td><code>HTTP 400 Bad Request</code> ohne weitere Erklärung</td>
+              <td>Kontextfenster anheben; 262 144 kostet hier nichts</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Größenangaben der HF-API</td>
+              <td>fehlende <code>size</code>-Felder werden als 0 verrechnet</td>
+              <td>Vollständigkeit prüfen, sonst um 28 GB zu niedrige Summen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Mehrere Modelle gleichzeitig</td>
+              <td>zwei Modelle über 60 GB passen nicht nebeneinander</td>
+              <td>Strikt sequenzieller Betrieb</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Modell-Revision nicht gepinnt</td>
+              <td>Upstream verschiebt <code>main</code>; 93 GB werden stillschweigend nachgeladen, danach bricht der Start am KV-Cache ab</td>
+              <td><code>--revision</code> für Modell und Draft pinnen — siehe unten</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= Durchsatz ================= -->
+    <section id="durchsatz">
+      <h2>Durchsatz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Gesamtdurchsatz in tok/s über alle gleichzeitigen Requests · Median aus 3 Läufen</caption>
+          <thead>
+            <tr><th>Szenario</th><th class="num">c</th><th class="num">vLLM+NVFP4</th><th class="num">vLLM+INT4</th><th class="num">SGLang+INT4</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">17,3</td><td class="num best">20,6</td><td class="num">18,2</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">25,5</td><td class="num best">31,7</td><td class="num">27,8</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">42,7</td><td class="num best">52,8</td><td class="num">45,3</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">15,0</td><td class="num best">23,8</td><td class="num">21,9</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">27,4</td><td class="num best">39,0</td><td class="num">33,2</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">42,4</td><td class="num best">64,3</td><td class="num">56,2</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">1</td><td class="num">5,8</td><td class="num best">13,1</td><td class="num">6,3</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">2</td><td class="num">11,6</td><td class="num best">38,9</td><td class="num">25,1</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">4</td><td class="num">18,7</td><td class="num best">64,6</td><td class="num">38,0</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">1</td><td class="num">7,5</td><td class="num">24,0</td><td class="num best">25,4</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">2</td><td class="num">11,8</td><td class="num">31,1</td><td class="num best">41,1</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">4</td><td class="num">17,6</td><td class="num">39,5</td><td class="num best">70,6</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Was die Zahlen zeigen</h3>
+      <p><strong>INT4 gewinnt gegen NVFP4 durchgängig</strong> — bei identischer Engine zwischen 19 und
+        59 % im Decode. Die extremen Werte bei den Prefill-Szenarien (bis +246 %) sind kein Messfehler,
+        sondern Folge des KV-Caches: vier parallele Requests zu je 16 913 Token belegen 67 652 Token. Bei
+        NVFP4 mit 94 135 Token Kapazität führt das zu Verdrängung und Warteschlangen, bei INT4 mit
+        950 420 Token ist es unkritisch.</p>
+
+      <p><strong>vLLM gewinnt gegen SGLang beim Decode</strong> — 13 bis 17 %, mit leicht wachsendem
+        Vorsprung bei höherer Concurrency. Das widerspricht der verbreiteten Annahme, SGLang skaliere
+        über Concurrency besser.</p>
+
+      <div class="note">
+        <h4>Die aufschlussreichste Zeile</h4>
+        <p>Beim wiederholten Präfix mit c=4 dreht sich das Verhältnis: SGLang erreicht
+          <strong>70,6</strong> gegen vLLMs <strong>39,5</strong> tok/s. Im Szenario davor, beim ersten
+          Kontakt mit demselben Präfix, war es umgekehrt (38,0 gegen 64,6). SGLang wird also besser, je
+          öfter derselbe Kontext wiederkehrt, während vLLM dort einbricht — genau das Profil agentischen
+          Codierens mit wachsender Historie, und genau die Wirkung, die RadixAttention verspricht.</p>
+      </div>
+
+      <details class="deep">
+        <summary>Decode-Rate pro einzelnem Stream</summary>
+        <div class="deep-body">
+          <p>Während der Gesamtdurchsatz mit der Concurrency steigt, fällt die Rate des einzelnen Streams —
+            das erwartbare Verhalten eines bandbreitenlimitierten Systems.</p>
+          <div class="scroller">
+            <table>
+              <caption>Median der Decode-Rate je Request in tok/s</caption>
+              <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">vLLM+NVFP4</th><th class="num">vLLM+INT4</th><th class="num">SGLang+INT4</th></tr></thead>
+              <tbody>
+                <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">18,11</td><td class="num">21,20</td><td class="num">18,56</td></tr>
+                <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">13,29</td><td class="num">16,81</td><td class="num">14,25</td></tr>
+                <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">11,14</td><td class="num">13,72</td><td class="num">11,40</td></tr>
+                <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">17,03</td><td class="num">25,35</td><td class="num">22,13</td></tr>
+                <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">14,15</td><td class="num">20,40</td><td class="num">17,10</td></tr>
+                <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">11,16</td><td class="num">17,60</td><td class="num">14,48</td></tr>
+                <tr><td class="rowlab">Prefill 18k</td><td class="num">1</td><td class="num">7,90</td><td class="num">29,04</td><td class="num">20,27</td></tr>
+                <tr><td class="rowlab">Prefill 18k</td><td class="num">2</td><td class="num">6,20</td><td class="num">22,82</td><td class="num">14,19</td></tr>
+                <tr><td class="rowlab">Prefill 18k</td><td class="num">4</td><td class="num">4,93</td><td class="num">19,18</td><td class="num">10,76</td></tr>
+                <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">1</td><td class="num">7,77</td><td class="num">27,25</td><td class="num">27,94</td></tr>
+                <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">2</td><td class="num">6,22</td><td class="num">17,64</td><td class="num">22,31</td></tr>
+                <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">4</td><td class="num">4,66</td><td class="num">14,27</td><td class="num">19,08</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Die niedrigen Werte in den Prefill-Szenarien sind ein Artefakt der kurzen Ausgabe: bei nur
+            64 Token dominiert der Fixkostenanteil, weshalb diese Zahlen nicht mit den
+            256-Token-Szenarien vergleichbar sind.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= Latenz ================= -->
+    <section id="latenz">
+      <h2>Antwortlatenz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Zeit bis zum ersten Token in Sekunden · Median</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">vLLM+NVFP4</th><th class="num">vLLM+INT4</th><th class="num">SGLang+INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">0,352</td><td class="num best">0,276</td><td class="num">0,314</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">0,443</td><td class="num">0,635</td><td class="num best">0,201</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">0,427</td><td class="num">0,513</td><td class="num best">0,193</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">0,374</td><td class="num">0,260</td><td class="num best">0,194</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">0,355</td><td class="num">0,266</td><td class="num best">0,196</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">0,374</td><td class="num">0,480</td><td class="num best">0,194</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">1</td><td class="num">0,307</td><td class="num">0,309</td><td class="num best">0,200</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">2</td><td class="num">0,468</td><td class="num">0,458</td><td class="num best">0,217</td></tr>
+            <tr><td class="rowlab">Prefill 18k</td><td class="num">4</td><td class="num">0,686</td><td class="num">0,551</td><td class="num best">0,269</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">1</td><td class="num">0,301</td><td class="num">0,328</td><td class="num best">0,204</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">2</td><td class="num">0,460</td><td class="num">0,484</td><td class="num best">0,255</td></tr>
+            <tr><td class="rowlab">Prefill 18k wiederholt</td><td class="num">4</td><td class="num">0,781</td><td class="num">0,630</td><td class="num best">0,285</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>SGLang gewinnt in elf von zwölf Messpunkten. Auffällig ist die <strong>Stabilität</strong>: die
+        Werte liegen fast unabhängig von Concurrency und Prompt-Länge zwischen 0,19 und 0,29 s, während
+        vLLM bis 0,78 s streut. Für interaktive Nutzung, wo die gefühlte Reaktionszeit zählt, ist das ein
+        realer Vorteil — er geht nur nicht in den Durchsatz ein.</p>
+    </section>
+
+    <!-- ================= Prefill ================= -->
+    <section id="prefill">
+      <h2>Prefill-Skalierung</h2>
+
+      <p>Gemessen mit einmaligem Präfix je Request, sodass kein Cache greift. Die drei kurzen Reihen
+        stammen aus den Hauptläufen, die lange Reihe aus der Nachmessung bei 262 144 Token Kontext.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Kaltes Prefill in tok/s · Median aus 3 Läufen mit je eigener UUID im Prompt</caption>
+          <thead><tr><th class="num">Prompt-Token</th><th class="num">vLLM+NVFP4</th><th class="num">vLLM+INT4</th><th class="num">SGLang+INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="num">≈ 4 700</td><td class="num">2051</td><td class="num best">2288</td><td class="num">1620</td></tr>
+            <tr><td class="num">≈ 18 500</td><td class="num">2019</td><td class="num best">2243</td><td class="num">1686</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>vLLM liegt hier deutlich vorn — gegenüber SGLang um 33 %. Zusammen mit dem Durchsatzvorteil ist
+        das die zweite Achse, auf der vLLM gewinnt.</p>
+
+      <h3>Verhalten über die Prompt-Länge</h3>
+
+      <div class="scroller">
+        <table>
+          <caption>vLLM + INT4 bei 262 144 Token Kontextfenster</caption>
+          <thead><tr><th class="num">Prompt-Token</th><th class="num">TTFT</th><th class="num">Prefill</th><th class="num">relativ</th></tr></thead>
+          <tbody>
+            <tr><td class="num">4 689</td><td class="num">2,1 s</td><td class="num">2255 tok/s</td><td class="num">—</td></tr>
+            <tr><td class="num">18 699</td><td class="num">8,1 s</td><td class="num">2301 tok/s</td><td class="num">100 %</td></tr>
+            <tr><td class="num">72 443</td><td class="num">39,2 s</td><td class="num">1850 tok/s</td><td class="num">80 %</td></tr>
+            <tr><td class="num">149 057</td><td class="num">100,4 s</td><td class="num">1484 tok/s</td><td class="num">64 %</td></tr>
+            <tr><td class="num">221 996</td><td class="num">181,3 s</td><td class="num">1224 tok/s</td><td class="num">53 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Von 18 699 auf 221 996 Token ist die Länge <strong>11,9-fach</strong>, die Zeit steigt aber nur
+        <strong>22,3-fach</strong>. Daraus folgt eine Komplexität von etwa <strong>O(n<sup>1,25</sup>)</strong>
+        — bemerkenswert nah am linearen Verlauf.</p>
+
+      <p>Zur Einordnung: bei reiner Voll-Attention wäre O(n²) zu erwarten, die Rate bei 222 000 Token also
+        auf rund 8 % statt der gemessenen 53 % eingebrochen. Lagunas Aufteilung — nur 12 der 48 Layer mit
+        voller Attention, 36 mit 512er Sliding Window — fängt den quadratischen Anteil weitgehend ab.</p>
+
+      <div class="note">
+        <h4>Praktische Konsequenz</h4>
+        <p>Der volle 262k-Kontext kostet hochgerechnet rund <strong>3,7 Minuten</strong> kaltes Prefill.
+          Einmalig erträglich, pro Anfrage nicht. Mit Präfix-Cache fällt das auf Bruchteile: bei
+          16 913 Token wurden 0,30 s warm gegen 9,32 s kalt gemessen, also <strong>Faktor 30</strong>.
+          Für Agenten mit wachsender Historie wird der lange Kontext damit einmal bezahlt und danach
+          wiederverwendet.</p>
+      </div>
+    </section>
+
+    <!-- ================= Speicher ================= -->
+    <section id="speicher">
+      <h2>Speicher und Start</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Aus den Startlogs der jeweils erfolgreichen Läufe</caption>
+          <thead><tr><th>Kennzahl</th><th class="num">vLLM+NVFP4</th><th class="num">vLLM+INT4 (65k)</th><th class="num">vLLM+INT4 (262k)</th><th class="num">SGLang+INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Gewichte</td><td class="num">95,63 GiB</td><td class="num">69,34 GiB</td><td class="num">69,34 GiB</td><td class="num">67,56 GB</td></tr>
+            <tr><td class="rowlab">Ladezeit</td><td class="num">595,6 s</td><td class="num">113,6 s</td><td class="num">115,1 s</td><td class="num">109,3 s</td></tr>
+            <tr><td class="rowlab">KV-Speicher</td><td class="num">6,97 GiB</td><td class="num">35,2 GiB</td><td class="num">—</td><td class="num">—</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num">94 135</td><td class="num">950 420</td><td class="num best">1 001 532</td><td class="num">185 897</td></tr>
+            <tr><td class="rowlab">KV je Token</td><td class="num">77,7 KiB</td><td class="num best">38,8 KiB</td><td class="num">—</td><td class="num">—</td></tr>
+            <tr><td class="rowlab">Max. Concurrency</td><td class="num">1,44× (65k)</td><td class="num">14,50× (65k)</td><td class="num">3,82× (262k)</td><td class="num">48 Requests</td></tr>
+            <tr><td class="rowlab">Startdauer gesamt</td><td class="num">≈ 17 min</td><td class="num">≈ 11 min</td><td class="num">≈ 3 min</td><td class="num">≈ 6 min</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Die Zeile <strong>KV je Token</strong> ist der unerwartetste Einzelbefund: bei identischem
+        Modell und identischer Engine verbraucht der NVFP4-Checkpoint genau doppelt so viel
+        KV-Speicher pro Token wie der INT4-Checkpoint. Zusammen mit den 26 GiB größeren Gewichten ergibt
+        das den Faktor zehn beim nutzbaren Cache.</p>
+
+      <p><strong>vLLM gegen SGLang beim KV-Cache:</strong> 950 420 gegen 185 897 Token bei
+        vergleichbarer Speichereinstellung — mehr als das Fünffache. Zur Fairness:
+        <code>--mem-fraction-static 0.85</code> und <code>--gpu-memory-utilization 0.89</code> sind nicht
+        exakt äquivalent, ein Teil der Lücke geht darauf. Fünffach erklärt das aber nicht.</p>
+
+      <details class="deep">
+        <summary>Startverhalten der beiden Engines im Vergleich</summary>
+        <div class="deep-body">
+          <p>Die Engines unterscheiden sich strukturell darin, <em>wann</em> sie FlashInfer-Kernel
+            übersetzen:</p>
+          <ul>
+            <li><strong>vLLM</strong> erledigt den JIT in einer eigenen Phase nach
+              <code>torch.compile</code> und vor dem Graph-Capturing. Der OOM-Kill in Versuch 02 traf
+              genau diese Phase.</li>
+            <li><strong>SGLang</strong> kompiliert <em>während</em> des Graph-Capturings. Der erste
+              Capture-Schritt (<code>num_tokens=8192</code>) enthält die gesamte Übersetzung und dauerte
+              114,6 s; die verbleibenden 57 Schritte zusammen nur 99 s.</li>
+          </ul>
+          <p>Der Kernel-Cache in <code>~/.cache/flashinfer</code> wuchs über die Versuche hinweg von 80 MB
+            auf 234 MB und ist persistent. Jeder spätere Start mit demselben Modell profitiert davon —
+            SGLang war im letzten Lauf nach 6 Minuten bereit statt nach den knapp 25 des ersten
+            vLLM-Erfolgs.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= Fehldiagnosen ================= -->
+    <section id="fehldiagnosen">
+      <h2>Fehldiagnosen im Verlauf</h2>
+
+      <p>Vier Einschätzungen während der Durchführung erwiesen sich als falsch und beeinflussten das
+        Vorgehen. Sie sind hier dokumentiert, weil sie den Zeitverlauf und einige Abbrüche erklären.</p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Aussage</th><th>Tatsächlich</th><th>Folge</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">NVFP4 sei 71,9 GB groß</td>
+              <td>99,7 GB — die HF-API lieferte für einen Teil der Dateien kein <code>size</code>-Feld, das als 0 verrechnet wurde</td>
+              <td>Speicherplanung und Kontextempfehlung zunächst zu optimistisch</td>
+            </tr>
+            <tr>
+              <td class="rowlab">SGLangs Graph-Capturing „hängt"</td>
+              <td>Es kompilierte; der erste von 58 Schritten dauert 114 s, danach fällt die Rate steil ab</td>
+              <td>Versuche 05 und 06 vorzeitig abgebrochen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Capturing dauert 1 h 50 min</td>
+              <td>3 min 33 s — die Zahl war eine tqdm-Hochrechnung aus dem ersten, compile-lastigen Schritt</td>
+              <td>Unnötige Rückfrage zum weiteren Vorgehen, während der Server bereits lief</td>
+            </tr>
+            <tr>
+              <td class="rowlab">INT4 verschaffe SGLang mehr Systemluft</td>
+              <td><code>mem-fraction-static</code> reserviert einen Anteil des Gesamtspeichers unabhängig von der Modellgröße; die Ersparnis wandert in den KV-Cache</td>
+              <td>Falsche Erwartung an Versuch 09, der aus anderem Grund gelang</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note caution">
+        <p>Das gemeinsame Muster: Eine <strong>Momentaufnahme</strong> wurde für einen
+          <strong>Zustand</strong> gehalten. Ein stehender Fortschrittsbalken bedeutete nicht Stillstand,
+          eine extrapolierte Restzeit war keine Messung, eine unvollständige API-Antwort keine
+          Vollständigkeit. In allen vier Fällen hätte eine zweite Beobachtung über die Zeit den Irrtum
+          aufgedeckt.</p>
+      </div>
+    </section>
+
+    <!-- ================= Widerlegt ================= -->
+    <section id="widerlegt">
+      <h2>Widerlegte Annahmen</h2>
+
+      <p>Ausgangspunkt der Tests waren kursierende Empfehlungen zum Betrieb von Laguna-S-2.1 auf der
+        DGX Spark. Diese wurden gegen die Messungen geprüft.</p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Behauptung</th><th>Befund</th><th>Beleg</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab"><code>sgl_kernel</code> ohne sm_121a, nur mit Neubau lauffähig</td>
+              <td><span class="pill fail">falsch</span></td>
+              <td>cuobjdump zeigt sm_121a in <code>common_ops.abi3.so</code>; SGLang lief ohne Eigenbau</td>
+            </tr>
+            <tr>
+              <td class="rowlab">NVFP4 ist die Variante für die Spark</td>
+              <td><span class="pill fail">falsch</span></td>
+              <td>INT4 gewinnt in allen zwölf Messpunkten</td>
+            </tr>
+            <tr>
+              <td class="rowlab">NVFP4 belegt etwa 71 GB</td>
+              <td><span class="pill fail">falsch</span></td>
+              <td>99,7 GB laut HF-API, 95,63 GiB laut Ladeprotokoll</td>
+            </tr>
+            <tr>
+              <td class="rowlab">INT4 belegt etwa 59 GB</td>
+              <td><span class="pill fail">falsch</span></td>
+              <td>71,9 GB laut HF-API, 69,34 GiB laut Ladeprotokoll</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Prefill 600–800 tok/s</td>
+              <td><span class="pill warn">zu niedrig</span></td>
+              <td>1224–2301 tok/s je nach Prompt-Länge</td>
+            </tr>
+            <tr>
+              <td class="rowlab">BF16 etwa 236 GB</td>
+              <td><span class="pill ok">bestätigt</span></td>
+              <td>235,1 GB</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Decode ohne Spekulation 13–14 tok/s</td>
+              <td><span class="pill ok">plausibel</span></td>
+              <td>mit DFlash 18,1–25,3 tok/s im Einzelstream</td>
+            </tr>
+            <tr>
+              <td class="rowlab"><code>MAX_JOBS=4</code> ist nötig</td>
+              <td><span class="pill warn">bestätigt, aber zu schwach</span></td>
+              <td>Führte zum OOM-Kill; nötig war <code>MAX_JOBS=1</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= Gepinnte Revisionen ================= -->
+    <section id="revision">
+      <h2>Gepinnte Revisionen</h2>
+
+      <p>Nachgetragen am 4. August 2026, nachdem ein Neustart der empfohlenen Konfiguration scheiterte.</p>
+
+      <p>poolside hat am 3. August <code>main</code> von <code>Laguna-S-2.1-INT4</code> auf einen
+        Checkpoint umgestellt, der <strong>nur dem Namen nach INT4</strong> ist. Der Start mit dem
+        unveränderten Skript zog vierzig Minuten lang stillschweigend 93 GB nach und brach dann ab.</p>
+
+      <h3>Was sich upstream geändert hat</h3>
+      <p>Die <code>quantization_config</code> ist in beiden Revisionen identisch — 4 Bit,
+        <code>type: int</code>, <code>pack-quantized</code>, Gruppengröße 32, 48 Layer. Der Unterschied
+        liegt darin, was davon <em>ausgenommen</em> wird. Die neue Revision ergänzt die Ignore-Liste um
+        eine Zeile:</p>
+
+      <pre>re:^model\.layers\.(?:40|41|42|43|44|45|46|47)\.mlp\.experts\.[0-9]+\.(?:gate_proj|up_proj|down_proj)$</pre>
+
+      <p>Das sind 8 Layer × 256 Experten × 3 Projektionen = <strong>6144 Gewichtsmatrizen, die von INT4
+        nach bfloat16 gewandert sind</strong>. Das Tensor-Inventar bestätigt es exakt:
+        <code>weight_packed</code> sinkt um 6144, einfaches <code>weight</code> steigt um dieselbe
+        Zahl.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Gemessen aus <code>config.json</code> und <code>model.safetensors.index.json</code> beider Revisionen</caption>
+          <thead><tr><th>Eigenschaft</th><th class="num">gepinnt <code>67dbeda4</code></th><th class="num">Upstream <code>main</code> (3. Aug.)</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Checkpoint-Größe</td><td class="num best">66,96 GiB</td><td class="num worse">92,84 GiB</td></tr>
+            <tr><td class="rowlab">Shards</td><td class="num">15</td><td class="num">19</td></tr>
+            <tr><td class="rowlab">INT4-gepackte Tensoren</td><td class="num">36 096</td><td class="num">29 952</td></tr>
+            <tr><td class="rowlab">Unquantisierte Gewichte</td><td class="num best">626</td><td class="num worse">6 770</td></tr>
+            <tr><td class="rowlab"><code>k_scale</code> / <code>v_scale</code></td><td class="num best">96</td><td class="num worse">0</td></tr>
+            <tr><td class="rowlab">KV-Cache je Token</td><td class="num best">38,8 KiB</td><td class="num worse">73,4 KiB</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Warum der Server den Dienst verweigert</h3>
+      <p>Beide Änderungen verstärken sich: Die größeren Gewichte lassen weniger Speicher übrig, und die
+        fehlenden KV-Skalen lassen dann jedes Token doppelt so viel Cache kosten:</p>
+
+      <pre>ValueError: To serve at least one request with the model's max seq len (262144),
+18.35 GiB KV cache is needed, which is larger than the available KV cache
+memory (<span class="hl">8.72 GiB</span>). Based on the available memory, the estimated
+maximum model length is <span class="hl">121840</span>.</pre>
+
+      <p><code>--gpu-memory-utilization</code> stand bereits auf 0,89, der in Versuch 01 ermittelten
+        Obergrenze. Nach oben ist kein Spielraum mehr.</p>
+
+      <h3>Die Korrektur</h3>
+      <pre>MODELL_REV=<span class="hl">67dbeda456e68139f281c40831f9d12049d8fc11</span>
+DRAFT_REV=<span class="hl">f6b32f4fb7ef2fb2ad481bb4c05433a2bf8b0ed1</span>
+
+exec vllm serve poolside/Laguna-S-2.1-INT4 \
+  --revision "$MODELL_REV" \
+  --speculative-config "{\"model\":\"poolside/Laguna-S-2.1-DFlash-INT4\",\"revision\":\"$DRAFT_REV\",…}" \</pre>
+
+      <p>Das Draft-Modell ist mitgepinnt. Es hat derzeit nur eine Revision, aber es ungepinnt zu lassen
+        verschiebt denselben Fehler nur nach hinten.</p>
+
+      <div class="note caution">
+        <p><strong>Alle Messwerte dieses Protokolls stammen von der gepinnten Revision.</strong> Werte
+          von Upstream-<code>main</code> sind nicht vergleichbar: andere Gewichte, halber KV-Cache und
+          ein Kontextfenster, das bei rund 121 840 statt 262 144 Token endet.</p>
+      </div>
+
+      <div class="note">
+        <h4>Früh erkennen</h4>
+        <p>Das Symptom täuscht — vierzig Minuten ohne Logausgabe, kein Fehler, der Speicher füllt sich.
+          Erkennbar ist es nicht am Log, sondern am Prozess: <code>write_bytes</code> in
+          <code>/proc/&lt;pid&gt;/io</code> wächst in den zweistelligen Gigabytebereich, während
+          <code>read_bytes</code> klein bleibt. Das ist ein Download, kein Ladevorgang. Ein zweites
+          Snapshot-Verzeichnis unter
+          <code>~/.cache/huggingface/hub/models--*/snapshots/</code> bestätigt es.</p>
+      </div>
+    </section>
+
+    <!-- ================= Empfehlung ================= -->
+    <section id="empfehlung">
+      <h2>Empfehlung</h2>
+
+      <h3>Standard: vLLM mit INT4</h3>
+      <p>Bester Durchsatz, fünffacher KV-Cache gegenüber SGLang, schnellstes Kaltprefill, 3,82 parallele
+        Requests bei vollem 262k-Kontext.</p>
+      <pre>export CUTE_DSL_ARCH=sm_121a
+export PATH=/usr/local/cuda/bin:$PATH
+<span class="hl">export MAX_JOBS=1</span>
+
+vllm serve poolside/Laguna-S-2.1-INT4 \
+  --speculative-config '{"model":"poolside/Laguna-S-2.1-DFlash-INT4","num_speculative_tokens":15}' \
+  --tool-call-parser poolside_v1 \
+  --reasoning-parser poolside_v1 \
+  --enable-auto-tool-choice \
+  --max-num-seqs 32 \
+  <span class="hl">--max-model-len 262144</span> \
+  <span class="hl">--gpu-memory-utilization 0.89</span> \
+  --host 0.0.0.0 --port 8000</pre>
+
+      <h3>Alternative bei interaktivem Agentenbetrieb: SGLang mit INT4</h3>
+      <p>Dreifach bessere Antwortlatenz und 79 % mehr Durchsatz bei wiederkehrendem Präfix. Wenn die
+        Arbeitslast lange geteilte Kontexte hat, kann das den Durchsatznachteil überwiegen.</p>
+      <pre>export TORCH_CUDA_ARCH_LIST=12.1a
+export TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+<span class="hl">export MAX_JOBS=2</span>
+
+python3 -m sglang.launch_server \
+  --model-path poolside/Laguna-S-2.1-INT4 \
+  --trust-remote-code \
+  --speculative-algorithm DFLASH \
+  --speculative-draft-model-path poolside/Laguna-S-2.1-DFlash-INT4 \
+  --page-size 1 \
+  <span class="hl">--mem-fraction-static 0.85</span> \
+  --context-length 65536 \
+  --cuda-graph-max-bs 8 \
+  --reasoning-parser poolside_v1 \
+  --tool-call-parser poolside_v1 \
+  --host 0.0.0.0 --port 30000</pre>
+
+      <div class="note">
+        <p><strong>Kein <code>--attention-backend</code> setzen.</strong> Die Auto-Auswahl trifft auf
+          sm_121 <code>flashinfer</code>, weil <code>trtllm_mha</code> laut Quellcode SM120 nicht
+          unterstützt und <code>fa3</code> Hopper-exklusiv ist. Triton ist für Lagunas
+          Sliding-Window-Attention ausdrücklich nicht geeignet.</p>
+      </div>
+    </section>
+
+    <!-- ================= Limitationen ================= -->
+    <section id="limits">
+      <h2>Limitationen</h2>
+      <ul>
+        <li><strong>Reasoning nicht abgetrennt.</strong> Der <code>poolside_v1</code>-Parser ließ sich
+          nicht initialisieren. Beide Textszenarien enthalten überwiegend Reasoning-Prosa, wodurch die
+          Trennung zwischen Code und Prosa entwertet ist. Der Engine-Vergleich bleibt gültig, weil beide
+          Engines identische Prompts erhielten.</li>
+        <li><strong>Speicherparameter nicht exakt äquivalent.</strong>
+          <code>--mem-fraction-static 0.85</code> und <code>--gpu-memory-utilization 0.89</code> sind
+          nicht dasselbe; ein Teil der KV-Cache-Differenz zwischen den Engines geht darauf zurück.</li>
+        <li><strong>SGLang nur mit INT4 vermessen.</strong> Die NVFP4-Läufe wurden nach drei
+          Fehlversuchen abgebrochen — nach heutigem Kenntnisstand vorzeitig.</li>
+        <li><strong>Je eine Messreihe pro Konfiguration.</strong> Drei Wiederholungen je Messpunkt, aber
+          kein Mittel über mehrere Sitzungen. Reproduzierbarkeit wurde punktuell geprüft: die
+          4,7k-Prefill-Stufe lieferte in zwei Läufen 2288 und 2255 tok/s (Abweichung 1,4 %).</li>
+        <li><strong>32k-Stufe im Hauptlauf gescheitert.</strong> Der Prompt überschritt
+          <code>max_model_len 65536</code> und wurde erst in der Nachmessung bei 262 144 erfasst.</li>
+        <li><strong>Concurrency nur bis 4.</strong> Höhere Stufen wurden nicht gemessen, obwohl vLLM+INT4
+          mit 14,5× und SGLang mit 48 gleichzeitigen Requests deutlich mehr zulassen.</li>
+      </ul>
+    </section>
+
+    <!-- ================= Glossar ================= -->
+    <section id="glossar">
+      <h2>Glossar</h2>
+      <dl class="glossary">
+        <div class="term">
+          <dt>sm_121a</dt>
+          <dd>Compute Capability 12.1 der GB10-GPU. CUDA-Kernel müssen für diese Architektur übersetzt
+            sein; die Gencode-Direktive erzeugt sie nur bei CUDA ≥ 13.0 auf aarch64.</dd>
+        </div>
+        <div class="term">
+          <dt>NVFP4 / INT4</dt>
+          <dd>Vier-Bit-Quantisierungen. NVFP4 ist NVIDIAs Microscaling-Format (E2M1 mit FP8-Blockskalen),
+            das Blackwell-Tensor-Cores nativ verarbeiten. INT4 speichert Ganzzahlen und dequantisiert vor
+            der Matrixmultiplikation.</dd>
+        </div>
+        <div class="term">
+          <dt>KV-Cache</dt>
+          <dd>Zwischenspeicher der Key- und Value-Tensoren bereits verarbeiteter Token. Seine Größe
+            begrenzt, wie viele Requests mit welcher Kontextlänge gleichzeitig laufen können.</dd>
+        </div>
+        <div class="term">
+          <dt>TTFT</dt>
+          <dd>Time To First Token — Zeit von der Anfrage bis zum ersten ausgegebenen Token. Bestimmt die
+            gefühlte Reaktionszeit, unabhängig vom Durchsatz.</dd>
+        </div>
+        <div class="term">
+          <dt>Prefill / Decode</dt>
+          <dd>Prefill verarbeitet den Eingabe-Prompt (rechenlastig, parallelisierbar), Decode erzeugt die
+            Ausgabe Token für Token (bandbreitenlastig, sequenziell).</dd>
+        </div>
+        <div class="term">
+          <dt>DFlash</dt>
+          <dd>Von poolside trainiertes Draft-Modell für Speculative Decoding, gepaart mit dem Basismodell.
+            Erzeugt Kandidaten-Token günstig und lässt sie parallel verifizieren.</dd>
+        </div>
+        <div class="term">
+          <dt>RadixAttention</dt>
+          <dd>SGLangs Präfix-Cache als Radix-Baum: gemeinsame Prompt-Anfänge mehrerer Requests werden
+            automatisch wiederverwendet. Das Gegenstück bei vLLM heißt Automatic Prefix Caching.</dd>
+        </div>
+        <div class="term">
+          <dt>Sliding-Window-Attention</dt>
+          <dd>Attention über ein begrenztes Fenster zurückliegender Token statt über die gesamte Sequenz.
+            Laguna nutzt in 36 von 48 Layern ein Fenster von 512, wodurch der KV-Cache und die
+            Prefill-Kosten deutlich langsamer als quadratisch wachsen.</dd>
+        </div>
+        <div class="term">
+          <dt>cicc</dt>
+          <dd>Compiler-Frontend der CUDA-Toolchain, von <code>nvcc</code> aufgerufen. Belegte in diesen
+            Tests bis zu 7,5 GB pro Prozess und war Auslöser des OOM-Kills.</dd>
+        </div>
+        <div class="term">
+          <dt>CUDA-Graph-Capturing</dt>
+          <dd>Vorabaufzeichnung fester Ausführungsgraphen für wiederkehrende Batch-Formen. Kostet Startzeit
+            und Speicher, ist auf dieser Hardware aber unverzichtbar — Deaktivierung kostet laut
+            Herstellerangaben rund 55 % Durchsatz.</dd>
+        </div>
+        <div class="term">
+          <dt>MoE / aktive Parameter</dt>
+          <dd>Mixture-of-Experts: nur ein Teil der Experten wird pro Token ausgewertet. Laguna hat 118 Mrd.
+            Parameter gesamt, aber nur 8 Mrd. aktiv — für die Decode-Geschwindigkeit zählt die zweite Zahl,
+            für den Speicherbedarf die erste.</dd>
+        </div>
+        <div class="term">
+          <dt>Unified Memory</dt>
+          <dd>Auf GB10 teilen sich CPU und GPU einen physischen Speicherpool. Es gibt keinen separaten
+            VRAM; Modellgewichte, KV-Cache, Betriebssystem und Compilerprozesse konkurrieren um dieselben
+            121 GB.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ================= Artefakte ================= -->
+    <section id="artefakte">
+      <h2>Artefakte</h2>
+
+      <h4>Messwerkzeuge</h4>
+      <dl class="spec">
+        <dt>bench.py</dt><dd>Durchsatz und TTFT über 4 Szenarien × 3 Concurrency-Stufen, nur Standardbibliothek</dd>
+        <dt>prefill.py</dt><dd>Kaltes Prefill über 5 Längenstufen bis 222 000 Token, einmaliger Präfix je Request</dd>
+      </dl>
+
+      <h4>Startskripte</h4>
+      <dl class="spec">
+        <dt>start-vllm-int4.sh</dt><dd>Empfohlene Konfiguration: INT4, 262k Kontext, DFlash, <code>MAX_JOBS=1</code></dd>
+        <dt>start-sglang-int4.sh</dt><dd>Latenz-Alternative: INT4, DFlash, <code>MAX_JOBS=2</code></dd>
+        <dt>start-vllm.sh · start-sglang.sh</dt><dd>NVFP4-Varianten zur Reproduktion</dd>
+      </dl>
+
+      <h4>Rohdaten</h4>
+      <dl class="spec">
+        <dt>ergebnisse_vllm.json</dt><dd>vLLM + NVFP4, alle 12 Messpunkte</dd>
+        <dt>ergebnisse_int4.json</dt><dd>vLLM + INT4, alle 12 Messpunkte</dd>
+        <dt>ergebnisse_sglang.json</dt><dd>SGLang + INT4, alle 12 Messpunkte</dd>
+        <dt>prefill_*.json</dt><dd>vier Prefill-Reihen einschließlich der Langmessung</dd>
+        <dt>*.log</dt><dd>Startprotokolle aller zehn Versuche, auch der gescheiterten</dd>
+      </dl>
+
+      <div class="note">
+        <p>Nach Abschluss der Tests wurden die NVFP4-Gewichte (93 GB) und das zugehörige Draft-Modell
+          (2,1 GB) entfernt. Im Cache verbleiben <code>Laguna-S-2.1-INT4</code> (67 GB) und
+          <code>Laguna-S-2.1-DFlash-INT4</code> (2,1 GB). Die Startskripte
+          <code>start-vllm.sh</code> und <code>start-sglang.sh</code> verweisen weiterhin auf das
+          gelöschte Modell und würden es bei einem Start erneut herunterladen.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Testprotokoll Laguna-S-2.1 auf DGX Spark GB10 · 10 Serverstarts, 3 vollständige Messreihen,
+    36 Messpunkte plus 9 Prefill-Stufen · alle Werte gemessen, keine Hochrechnungen außer der
+    ausdrücklich als solche gekennzeichneten Extrapolation auf 262 144 Token.
+  </footer>
+
+</div>
+</body>
+</html>

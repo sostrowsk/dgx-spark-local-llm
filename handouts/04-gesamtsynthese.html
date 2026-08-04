@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LLM-Inferenz auf DGX Spark GB10 — Gesamtsynthese der Testreihe</title>
+<title>LLM inference on DGX Spark GB10 — overall synthesis</title>
 <style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
 </head>
 <body>
@@ -143,41 +143,41 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="eyebrow">Testprotokoll · Inferenz-Benchmark · Teil 4 — Synthese</p>
-    <h1>LLM-Inferenz auf DGX Spark GB10</h1>
-    <p class="standfirst">Sechs Serverkonfigurationen, drei Modelle, zwei Engines, zwei
-      Quantisierungsformate — auf derselben Hardware, mit demselben Harness und denselben Prompts.
-      Was sich daraus über die Maschine lernen lässt.</p>
+    <p class="eyebrow">Test report · Inference benchmark · Part 4 — Synthesis</p>
+    <h1>LLM inference on DGX Spark GB10</h1>
+    <p class="standfirst">Six server configurations, three models, two engines, two quantization
+      formats — on the same hardware, with the same harness and the same prompts. What that teaches us
+      about the machine.</p>
     <div class="meta">
-      <span><b>Hardware</b> NVIDIA GB10 · sm_121a · 121 GB Unified Memory · 273 GB/s</span>
-      <span><b>Konfigurationen</b> 6</span>
-      <span><b>Messpunkte</b> 72 plus 22 Prefill-Stufen</span>
-      <span><b>Serverstarts</b> 14 · davon 6 gescheitert</span>
+      <span><b>Hardware</b> NVIDIA GB10 · sm_121a · 121 GB unified memory · 273 GB/s</span>
+      <span><b>Configurations</b> 6</span>
+      <span><b>Measurement points</b> 72 plus 22 prefill stages</span>
+      <span><b>Server starts</b> 14 · 6 of them failed</span>
     </div>
   </header>
 
   <aside class="toc">
-    <nav aria-label="Inhaltsübersicht">
-      <h2>Inhalt</h2>
+    <nav aria-label="Table of contents">
+      <h2>Contents</h2>
       <ol>
-        <li><a href="#tldr">Auf einen Blick</a></li>
-        <li><a href="#kern">Die fünf Kernaussagen</a></li>
-        <li><a href="#konfig">Die sechs Konfigurationen</a></li>
-        <li><a href="#rangliste">Rangliste</a></li>
-        <li><a href="#parameter">Aktive Parameter</a></li>
-        <li><a href="#engines">vLLM gegen SGLang</a></li>
-        <li><a href="#formate">INT4 gegen NVFP4</a></li>
-        <li><a href="#praefix">Der Präfix-Cache</a></li>
-        <li><a href="#prefill">Prefill-Skalierung</a></li>
-        <li><a href="#speicher">Speicher als Hauptvariable</a></li>
-        <li><a href="#volldaten">Vollständige Messdaten</a></li>
-        <li><a href="#fallstricke">Übertragbare Fallstricke</a></li>
-        <li><a href="#widerlegt">Widerlegte Annahmen</a></li>
-        <li><a href="#empfehlung">Empfehlungsmatrix</a></li>
-        <li><a href="#methodik">Methodik</a></li>
-        <li><a href="#offen">Offene Fragen</a></li>
-        <li><a href="#glossar">Glossar</a></li>
-        <li><a href="#quellen">Einzelprotokolle</a></li>
+        <li><a href="#tldr">At a glance</a></li>
+        <li><a href="#kern">The five key findings</a></li>
+        <li><a href="#konfig">The six configurations</a></li>
+        <li><a href="#rangliste">Rankings</a></li>
+        <li><a href="#parameter">Active parameters</a></li>
+        <li><a href="#engines">vLLM against SGLang</a></li>
+        <li><a href="#formate">INT4 against NVFP4</a></li>
+        <li><a href="#praefix">The prefix cache</a></li>
+        <li><a href="#prefill">Prefill scaling</a></li>
+        <li><a href="#speicher">Memory as the main variable</a></li>
+        <li><a href="#volldaten">Complete measurement data</a></li>
+        <li><a href="#fallstricke">Transferable pitfalls</a></li>
+        <li><a href="#widerlegt">Refuted assumptions</a></li>
+        <li><a href="#empfehlung">Recommendation matrix</a></li>
+        <li><a href="#methodik">Methodology</a></li>
+        <li><a href="#offen">Open questions</a></li>
+        <li><a href="#glossar">Glossary</a></li>
+        <li><a href="#quellen">Individual reports</a></li>
       </ol>
     </nav>
   </aside>
@@ -186,411 +186,406 @@
 
     <!-- ============ TL;DR ============ -->
     <section id="tldr" class="tldr">
-      <h2>Auf einen Blick</h2>
-      <p>Die Testreihe begann mit zwei Annahmen, die beide falsch waren: NVFP4 sei die richtige
-        Quantisierung für diese Hardware, und SGLang scheitere dort an fehlenden Kerneln. Was am Ende
-        zählt, ist etwas Drittes — die Zahl der aktiven Parameter und die Frage, ob sich der Kontext
-        wiederverwenden lässt.</p>
+      <h2>At a glance</h2>
+      <p>The test series began with two assumptions, both of which were wrong: that NVFP4 was the right
+        quantization for this hardware, and that SGLang would fail on it for lack of kernels. What counts
+        in the end is a third thing — the number of active parameters, and whether the context can be
+        reused.</p>
 
       <div class="tldr-grid">
         <div class="tldr-item">
-          <h3>Aktive Parameter entscheiden</h3>
-          <p>8 Mrd. → 20,6 tok/s, 4 Mrd. → 53,0, 3 Mrd. → 60,7. Die Zahl hinter dem „A" im Modellnamen
-            sagt mehr über das Tempo als Format, Engine und Gesamtgröße zusammen.</p>
+          <h3>Active parameters decide</h3>
+          <p>8 B → 20.6 tok/s, 4 B → 53.0, 3 B → 60.7. The number after the “A” in the model name says
+            more about speed than format, engine and total size combined.</p>
         </div>
         <div class="tldr-item">
-          <h3>Der Präfix-Cache hängt an der Architektur</h3>
-          <p>Sliding Window: Faktor 30 bis 34. Lineare Attention: Faktor 1,0 — gar kein Effekt.
-            Für Agenten mit wachsender Historie ist das der größte Einzelhebel.</p>
+          <h3>The prefix cache depends on the architecture</h3>
+          <p>Sliding window: a factor of 30 to 34. Linear attention: a factor of 1.0 — no effect at all.
+            For agents with a growing history that is the single biggest lever.</p>
         </div>
         <div class="tldr-item">
-          <h3>INT4 gegen NVFP4 ist lastabhängig</h3>
-          <p>Bei Speicherdruck gewinnt das kleinere Format. Ohne Speicherdruck gewinnt NVFP4 bei
-            niedriger Last um 17 %, und INT4 zieht ab vier Streams gleich.</p>
+          <h3>INT4 against NVFP4 is load-dependent</h3>
+          <p>Under memory pressure the smaller format wins. Without memory pressure NVFP4 wins by 17 % at
+            low load, and INT4 draws level from four streams on.</p>
         </div>
         <div class="tldr-item">
-          <h3>vLLM und SGLang teilen sich die Disziplinen</h3>
-          <p>vLLM: +17 % Durchsatz, fünffacher KV-Cache. SGLang: dreifach bessere Latenz, +79 % bei
-            wiederkehrendem Präfix.</p>
+          <h3>vLLM and SGLang split the disciplines</h3>
+          <p>vLLM: +17 % throughput, five times the KV cache. SGLang: three times better latency, +79 %
+            on a recurring prefix.</p>
         </div>
       </div>
 
       <div class="headline-figs">
-        <div class="fig"><span class="n">201,2</span><span class="l">tok/s Bestwert<br>Qwen3.6, Code, c=4</span></div>
-        <div class="fig"><span class="n">0,036</span><span class="l">Sekunden TTFT<br>Gemma-4</span></div>
-        <div class="fig"><span class="n">3,9 Mio</span><span class="l">Token KV-Cache<br>Gemma-4</span></div>
-        <div class="fig"><span class="n">9,8×</span><span class="l">Spanne zwischen bester<br>und schlechtester Konfiguration</span></div>
+        <div class="fig"><span class="n">201.2</span><span class="l">tok/s best value<br>Qwen3.6, code, c=4</span></div>
+        <div class="fig"><span class="n">0.036</span><span class="l">seconds TTFT<br>Gemma-4</span></div>
+        <div class="fig"><span class="n">3.9 M</span><span class="l">tokens KV cache<br>Gemma-4</span></div>
+        <div class="fig"><span class="n">9.8×</span><span class="l">spread between best<br>and worst configuration</span></div>
       </div>
     </section>
 
-    <!-- ============ Kernaussagen ============ -->
+    <!-- ============ Key findings ============ -->
     <section id="kern">
-      <h2>Die fünf Kernaussagen</h2>
+      <h2>The five key findings</h2>
 
-      <h3>1. Auf 273 GB/s zählt, wie viele Bytes pro Token bewegt werden</h3>
-      <p>Alles Weitere folgt daraus. Aktive Parameter bestimmen das Decode-Tempo, die Gewichtsgröße
-        bestimmt, wie viel Speicher für den KV-Cache übrig bleibt, und der KV-Cache bestimmt, wie viele
-        Nutzer gleichzeitig bedient werden können. Rechenformate und Kernel-Pfade wirken erst in zweiter
-        Ordnung.</p>
+      <h3>1. At 273 GB/s, what counts is how many bytes are moved per token</h3>
+      <p>Everything else follows from that. Active parameters determine decode speed, the weight size
+        determines how much memory is left for the KV cache, and the KV cache determines how many users
+        can be served concurrently. Compute formats and kernel paths act only in second order.</p>
 
-      <h3>2. Der Präfix-Cache ist die zweitwichtigste Eigenschaft</h3>
-      <p>Ein Agent, der über zwanzig Turns denselben 16k-Kontext mitschleppt, zahlt bei einem Modell mit
-        linearer Attention jedes Mal den vollen Preis. Bei Sliding-Window-Modellen fällt der Aufwand nach
-        dem ersten Mal um Faktor 30 bis 34. Kein Engine-Wechsel und kein Quantisierungsformat gleicht
-        das aus.</p>
+      <h3>2. The prefix cache is the second most important property</h3>
+      <p>An agent carrying the same 16k context across twenty turns pays full price every time on a model
+        with linear attention. On sliding-window models the cost drops by a factor of 30 to 34 after the
+        first time. No change of engine and no quantization format compensates for that.</p>
 
-      <h3>3. Speicherdruck verzerrt jeden Formatvergleich</h3>
-      <p>Der Laguna-Test schien zu zeigen, dass INT4 NVFP4 schlägt — tatsächlich zeigte er, dass ein
-        Modell, das 95,63 von 121 GiB belegt, kaum noch KV-Cache übrig lässt. Erst der Gemma-4-Test mit
-        praktisch gleich großen Varianten misst die Formate selbst.</p>
+      <h3>3. Memory pressure distorts every format comparison</h3>
+      <p>The Laguna test appeared to show that INT4 beats NVFP4 — what it actually showed was that a model
+        occupying 95.63 of 121 GiB leaves hardly any KV cache. Only the Gemma-4 test, with variants of
+        practically equal size, measures the formats themselves.</p>
 
-      <h3>4. Die Engine-Wahl ist kein Performance-, sondern ein Profilthema</h3>
-      <p>vLLM und SGLang liegen beim Durchsatz 13 bis 17 % auseinander — spürbar, aber klein gegenüber
-        dem Faktor 3 zwischen den Modellen. Interessanter ist, dass sie unterschiedliche Disziplinen
-        gewinnen: Durchsatz und Speicher gegen Latenz und Präfix-Wiederverwendung.</p>
+      <h3>4. Choosing an engine is not a performance question but a profile question</h3>
+      <p>vLLM and SGLang are 13 to 17 % apart on throughput — noticeable, but small next to the factor of
+        3 between the models. What is more interesting is that they win different disciplines: throughput
+        and memory against latency and prefix reuse.</p>
 
-      <h3>5. Die meisten Fallstricke sind Messfehler, keine Hardwareprobleme</h3>
-      <p>Von den dokumentierten Stolperstellen betrafen die folgenschwersten nicht die Maschine, sondern
-        die Beobachtung: eine hochgerechnete Restzeit für eine Messung gehalten, die erste Anfrage als
-        repräsentativ genommen, ein Ausgabefeld übersehen, unvollständige API-Daten als vollständig
-        verrechnet.</p>
+      <h3>5. Most pitfalls are measurement errors, not hardware problems</h3>
+      <p>Of the documented stumbling blocks, the most consequential concerned not the machine but the
+        observation: an extrapolated remaining time taken for a measurement, the first request taken as
+        representative, an output field overlooked, incomplete API data counted as complete.</p>
     </section>
 
-    <!-- ============ Konfigurationen ============ -->
+    <!-- ============ Configurations ============ -->
     <section id="konfig">
-      <h2>Die sechs Konfigurationen</h2>
+      <h2>The six configurations</h2>
 
       <div class="scroller">
         <table>
-          <thead><tr><th class="num">#</th><th>Modell</th><th>Format</th><th>Engine</th><th class="num">aktiv</th><th class="num">Gewichte</th><th>Spekulation</th></tr></thead>
+          <thead><tr><th class="num">#</th><th>Model</th><th>Format</th><th>Engine</th><th class="num">active</th><th class="num">Weights</th><th>Speculation</th></tr></thead>
           <tbody>
-            <tr><td class="num">1</td><td class="rowlab">Laguna-S-2.1</td><td>NVFP4</td><td>vLLM</td><td class="num">8 Mrd.</td><td class="num">95,63 GiB</td><td>DFlash</td></tr>
-            <tr><td class="num">2</td><td class="rowlab">Laguna-S-2.1</td><td>INT4</td><td>vLLM</td><td class="num">8 Mrd.</td><td class="num">69,34 GiB</td><td>DFlash</td></tr>
-            <tr><td class="num">3</td><td class="rowlab">Laguna-S-2.1</td><td>INT4</td><td>SGLang</td><td class="num">8 Mrd.</td><td class="num">67,56 GB</td><td>DFlash</td></tr>
-            <tr><td class="num">4</td><td class="rowlab">Qwen3.6-35B-A3B</td><td>NVFP4</td><td>vLLM</td><td class="num">3 Mrd.</td><td class="num">23,45 GiB</td><td>MTP</td></tr>
-            <tr><td class="num">5</td><td class="rowlab">Gemma-4-26B-A4B</td><td>NVFP4</td><td>vLLM</td><td class="num">4 Mrd.</td><td class="num">15,88 GiB</td><td class="worse">keine</td></tr>
-            <tr><td class="num">6</td><td class="rowlab">Gemma-4-26B-A4B</td><td>INT4 (QAT)</td><td>vLLM</td><td class="num">4 Mrd.</td><td class="num">16,63 GiB</td><td class="worse">keine</td></tr>
+            <tr><td class="num">1</td><td class="rowlab">Laguna-S-2.1</td><td>NVFP4</td><td>vLLM</td><td class="num">8 B</td><td class="num">95.63 GiB</td><td>DFlash</td></tr>
+            <tr><td class="num">2</td><td class="rowlab">Laguna-S-2.1</td><td>INT4</td><td>vLLM</td><td class="num">8 B</td><td class="num">69.34 GiB</td><td>DFlash</td></tr>
+            <tr><td class="num">3</td><td class="rowlab">Laguna-S-2.1</td><td>INT4</td><td>SGLang</td><td class="num">8 B</td><td class="num">67.56 GB</td><td>DFlash</td></tr>
+            <tr><td class="num">4</td><td class="rowlab">Qwen3.6-35B-A3B</td><td>NVFP4</td><td>vLLM</td><td class="num">3 B</td><td class="num">23.45 GiB</td><td>MTP</td></tr>
+            <tr><td class="num">5</td><td class="rowlab">Gemma-4-26B-A4B</td><td>NVFP4</td><td>vLLM</td><td class="num">4 B</td><td class="num">15.88 GiB</td><td class="worse">none</td></tr>
+            <tr><td class="num">6</td><td class="rowlab">Gemma-4-26B-A4B</td><td>INT4 (QAT)</td><td>vLLM</td><td class="num">4 B</td><td class="num">16.63 GiB</td><td class="worse">none</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Alle drei Modelle sind Mixture-of-Experts-Architekturen mit hybrider Attention und multimodalen
-        Fähigkeiten, die in diesen Tests ungenutzt blieben. Alle unterstützen 262 144 Token Kontext.</p>
+      <p>All three models are mixture-of-experts architectures with hybrid attention and multimodal
+        capabilities that went unused in these tests. All support a 262,144-token context.</p>
 
       <div class="note caution">
-        <p><strong>Zur Vergleichbarkeit:</strong> Laguna und Qwen3.6 nutzen spekulative Dekodierung
-          (DFlash bzw. MTP), Gemma-4 nicht — die Checkpoints liefern keinen Spekulationskopf mit. Gemma-4
-          erreicht seine Werte also ohne diesen Multiplikator, was seine Position in der Rangliste
-          zusätzlich aufwertet.</p>
+        <p><strong>On comparability:</strong> Laguna and Qwen3.6 use speculative decoding (DFlash and MTP
+          respectively), Gemma-4 does not — its checkpoints ship no speculation head. Gemma-4 therefore
+          reaches its values without that multiplier, which makes its position in the rankings all the
+          more notable.</p>
       </div>
     </section>
 
-    <!-- ============ Rangliste ============ -->
+    <!-- ============ Rankings ============ -->
     <section id="rangliste">
-      <h2>Rangliste</h2>
+      <h2>Rankings</h2>
 
       <div class="scroller">
         <table>
-          <caption>Bester gemessener Wert je Disziplin</caption>
-          <thead><tr><th>Disziplin</th><th class="num">Bestwert</th><th>Konfiguration</th><th class="num">schlechtester Wert</th><th class="num">Spanne</th></tr></thead>
+          <caption>Best measured value per discipline</caption>
+          <thead><tr><th>Discipline</th><th class="num">Best value</th><th>Configuration</th><th class="num">Worst value</th><th class="num">Spread</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Durchsatz c=4</td><td class="num best">201,2 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">42,4</td><td class="num">4,7×</td></tr>
-            <tr><td class="rowlab">Durchsatz c=1</td><td class="num best">63,5 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">15,0</td><td class="num">4,2×</td></tr>
-            <tr><td class="rowlab">TTFT</td><td class="num best">0,036 s</td><td>Gemma-4 NVFP4</td><td class="num">0,352 s</td><td class="num">9,8×</td></tr>
-            <tr><td class="rowlab">KV-Cache</td><td class="num best">3 912 140</td><td>Gemma-4 NVFP4</td><td class="num">94 135</td><td class="num">41,6×</td></tr>
-            <tr><td class="rowlab">Kaltes Prefill 16k</td><td class="num best">5301 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">1686</td><td class="num">3,1×</td></tr>
-            <tr><td class="rowlab">Präfix-Cache-Faktor</td><td class="num best">≈ 34</td><td>Gemma-4</td><td class="num">1,0</td><td class="num">34×</td></tr>
-            <tr><td class="rowlab">Wiederholter Präfix c=4</td><td class="num best">141,1 tok/s</td><td>Gemma-4 NVFP4</td><td class="num">17,6</td><td class="num">8,0×</td></tr>
+            <tr><td class="rowlab">Throughput c=4</td><td class="num best">201.2 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">42.4</td><td class="num">4.7×</td></tr>
+            <tr><td class="rowlab">Throughput c=1</td><td class="num best">63.5 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">15.0</td><td class="num">4.2×</td></tr>
+            <tr><td class="rowlab">TTFT</td><td class="num best">0.036 s</td><td>Gemma-4 NVFP4</td><td class="num">0.352 s</td><td class="num">9.8×</td></tr>
+            <tr><td class="rowlab">KV cache</td><td class="num best">3,912,140</td><td>Gemma-4 NVFP4</td><td class="num">94,135</td><td class="num">41.6×</td></tr>
+            <tr><td class="rowlab">Cold prefill 16k</td><td class="num best">5301 tok/s</td><td>Qwen3.6 NVFP4</td><td class="num">1686</td><td class="num">3.1×</td></tr>
+            <tr><td class="rowlab">Prefix cache factor</td><td class="num best">≈ 34</td><td>Gemma-4</td><td class="num">1.0</td><td class="num">34×</td></tr>
+            <tr><td class="rowlab">Repeated prefix c=4</td><td class="num best">141.1 tok/s</td><td>Gemma-4 NVFP4</td><td class="num">17.6</td><td class="num">8.0×</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Die Spanne zwischen bester und schlechtester Konfiguration beträgt bei der Latenz fast das
-        Zehnfache, beim KV-Cache über das Vierzigfache. <strong>Laguna belegt in keiner Disziplin den
-        ersten Platz</strong> — was die Modellqualität nicht berührt, die diese Reihe nicht misst.</p>
+      <p>The spread between the best and worst configuration is nearly tenfold on latency and more than
+        fortyfold on KV cache. <strong>Laguna takes first place in no discipline</strong> — which says
+        nothing about model quality, something this series does not measure.</p>
     </section>
 
-    <!-- ============ Parameter ============ -->
+    <!-- ============ Parameters ============ -->
     <section id="parameter">
-      <h2>Aktive Parameter</h2>
+      <h2>Active parameters</h2>
 
       <div class="scroller">
         <table>
-          <caption>Decode bei einem einzelnen Stream, jeweils beste Variante des Modells</caption>
-          <thead><tr><th>Modell</th><th class="num">aktiv</th><th class="num">Decode c=1</th><th class="num">c=4 gesamt</th><th>Spekulation</th></tr></thead>
+          <caption>Decode on a single stream, best variant of each model</caption>
+          <thead><tr><th>Model</th><th class="num">active</th><th class="num">Decode c=1</th><th class="num">c=4 total</th><th>Speculation</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna-S-2.1</td><td class="num">8 Mrd.</td><td class="num">20,6</td><td class="num">52,8</td><td>DFlash</td></tr>
-            <tr><td class="rowlab">Gemma-4-26B</td><td class="num">4 Mrd.</td><td class="num">53,0</td><td class="num">177,1</td><td class="worse">keine</td></tr>
-            <tr><td class="rowlab">Qwen3.6-35B</td><td class="num">3 Mrd.</td><td class="num best">60,7</td><td class="num best">201,2</td><td>MTP</td></tr>
+            <tr><td class="rowlab">Laguna-S-2.1</td><td class="num">8 B</td><td class="num">20.6</td><td class="num">52.8</td><td>DFlash</td></tr>
+            <tr><td class="rowlab">Gemma-4-26B</td><td class="num">4 B</td><td class="num">53.0</td><td class="num">177.1</td><td class="worse">none</td></tr>
+            <tr><td class="rowlab">Qwen3.6-35B</td><td class="num">3 B</td><td class="num best">60.7</td><td class="num best">201.2</td><td>MTP</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Der Zusammenhang ist deutlich, aber nicht exakt proportional. Bemerkenswert ist die mittlere
-        Zeile: <strong>Gemma-4 erreicht mit halb so vielen aktiven Parametern wie Laguna das 2,6-fache
-        Tempo — und das ohne jede spekulative Dekodierung</strong>, während Laguna mit DFlash arbeitet.
-        Rechnet man den Spekulationsvorteil heraus, ist der Zusammenhang zwischen aktiven Parametern und
-        Tempo noch enger, als die Rohzahlen zeigen.</p>
+      <p>The relationship is clear but not exactly proportional. What stands out is the middle row:
+        <strong>Gemma-4 reaches 2.6× the speed of Laguna with half as many active parameters — and does so
+        without any speculative decoding</strong>, while Laguna works with DFlash. Factor out the
+        speculation advantage and the link between active parameters and speed is tighter still than the
+        raw numbers show.</p>
 
-      <h3>Skalierung über Concurrency</h3>
+      <h3>Scaling over concurrency</h3>
       <div class="scroller">
         <table>
-          <caption>Anteil der Einzelstream-Rate, der bei vier parallelen Streams erhalten bleibt</caption>
-          <thead><tr><th>Konfiguration</th><th class="num">c=1</th><th class="num">c=4</th><th class="num">erhalten</th></tr></thead>
+          <caption>Share of the single-stream rate retained at four concurrent streams</caption>
+          <thead><tr><th>Configuration</th><th class="num">c=1</th><th class="num">c=4</th><th class="num">retained</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna INT4</td><td class="num">21,2</td><td class="num">13,7</td><td class="num worse">65 %</td></tr>
-            <tr><td class="rowlab">Qwen3.6 NVFP4</td><td class="num">62,2</td><td class="num">47,8</td><td class="num">77 %</td></tr>
-            <tr><td class="rowlab">Gemma-4 NVFP4</td><td class="num">53,5</td><td class="num">43,2</td><td class="num">81 %</td></tr>
-            <tr><td class="rowlab">Gemma-4 INT4</td><td class="num">44,1</td><td class="num">45,5</td><td class="num best">103 %</td></tr>
+            <tr><td class="rowlab">Laguna INT4</td><td class="num">21.2</td><td class="num">13.7</td><td class="num worse">65 %</td></tr>
+            <tr><td class="rowlab">Qwen3.6 NVFP4</td><td class="num">62.2</td><td class="num">47.8</td><td class="num">77 %</td></tr>
+            <tr><td class="rowlab">Gemma-4 NVFP4</td><td class="num">53.5</td><td class="num">43.2</td><td class="num">81 %</td></tr>
+            <tr><td class="rowlab">Gemma-4 INT4</td><td class="num">44.1</td><td class="num">45.5</td><td class="num best">103 %</td></tr>
           </tbody>
         </table>
       </div>
-      <p>Je weniger aktive Parameter, desto weiter ist die Maschine von der Bandbreitendecke entfernt und
-        desto besser skaliert sie über Parallelität. Gemma-4 INT4 wird bei vier Streams pro Stream sogar
-        schneller als bei einem — ein Batching-Effekt der Marlin-Kernel.</p>
+      <p>The fewer the active parameters, the further the machine sits from the bandwidth ceiling and the
+        better it scales over parallelism. At four streams Gemma-4 INT4 even gets faster per stream than
+        at one — a batching effect of the Marlin kernels.</p>
     </section>
 
     <!-- ============ Engines ============ -->
     <section id="engines">
-      <h2>vLLM gegen SGLang</h2>
+      <h2>vLLM against SGLang</h2>
 
-      <p>Getestet auf Laguna-S-2.1-INT4, beide mit DFlash-Spekulation, beide auf torch 2.11.0+cu130.</p>
+      <p>Tested on Laguna-S-2.1-INT4, both with DFlash speculation, both on torch 2.11.0+cu130.</p>
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Disziplin</th><th class="num">vLLM 0.25.1</th><th class="num">SGLang 0.5.16</th><th class="num">Vorsprung</th></tr></thead>
+          <thead><tr><th>Discipline</th><th class="num">vLLM 0.25.1</th><th class="num">SGLang 0.5.16</th><th class="num">Lead</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Prosa c=1</td><td class="num best">20,6</td><td class="num">18,2</td><td class="num">vLLM +13 %</td></tr>
-            <tr><td class="rowlab">Prosa c=2</td><td class="num best">31,7</td><td class="num">27,8</td><td class="num">vLLM +14 %</td></tr>
-            <tr><td class="rowlab">Prosa c=4</td><td class="num best">52,8</td><td class="num">45,3</td><td class="num">vLLM +17 %</td></tr>
-            <tr><td class="rowlab">Code c=4</td><td class="num best">64,3</td><td class="num">56,2</td><td class="num">vLLM +14 %</td></tr>
-            <tr class="sep"><td class="rowlab">TTFT c=2</td><td class="num">0,635 s</td><td class="num best">0,201 s</td><td class="num">SGLang 3,2×</td></tr>
-            <tr><td class="rowlab">TTFT c=4</td><td class="num">0,513 s</td><td class="num best">0,193 s</td><td class="num">SGLang 2,7×</td></tr>
-            <tr><td class="rowlab">Wiederholter Präfix c=4</td><td class="num">39,5</td><td class="num best">70,6</td><td class="num">SGLang +79 %</td></tr>
-            <tr class="sep"><td class="rowlab">KV-Cache</td><td class="num best">950 420</td><td class="num">185 897</td><td class="num">vLLM 5,1×</td></tr>
-            <tr><td class="rowlab">Kaltes Prefill 16k</td><td class="num best">2243</td><td class="num">1686</td><td class="num">vLLM +33 %</td></tr>
+            <tr><td class="rowlab">Prose c=1</td><td class="num best">20.6</td><td class="num">18.2</td><td class="num">vLLM +13 %</td></tr>
+            <tr><td class="rowlab">Prose c=2</td><td class="num best">31.7</td><td class="num">27.8</td><td class="num">vLLM +14 %</td></tr>
+            <tr><td class="rowlab">Prose c=4</td><td class="num best">52.8</td><td class="num">45.3</td><td class="num">vLLM +17 %</td></tr>
+            <tr><td class="rowlab">Code c=4</td><td class="num best">64.3</td><td class="num">56.2</td><td class="num">vLLM +14 %</td></tr>
+            <tr class="sep"><td class="rowlab">TTFT c=2</td><td class="num">0.635 s</td><td class="num best">0.201 s</td><td class="num">SGLang 3.2×</td></tr>
+            <tr><td class="rowlab">TTFT c=4</td><td class="num">0.513 s</td><td class="num best">0.193 s</td><td class="num">SGLang 2.7×</td></tr>
+            <tr><td class="rowlab">Repeated prefix c=4</td><td class="num">39.5</td><td class="num best">70.6</td><td class="num">SGLang +79 %</td></tr>
+            <tr class="sep"><td class="rowlab">KV cache</td><td class="num best">950,420</td><td class="num">185,897</td><td class="num">vLLM 5.1×</td></tr>
+            <tr><td class="rowlab">Cold prefill 16k</td><td class="num best">2243</td><td class="num">1686</td><td class="num">vLLM +33 %</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Was die Zahlen bedeuten</h3>
-      <p><strong>vLLM gewinnt beim Durchsatz, und der Vorsprung wächst mit der Concurrency</strong> —
-        das Gegenteil der verbreiteten Erwartung, SGLang skaliere über Parallelität besser.</p>
-      <p><strong>SGLang gewinnt bei der Latenz deutlich und stabil.</strong> Die TTFT liegt fast
-        unabhängig von Last und Prompt-Länge zwischen 0,19 und 0,29 s, während vLLM bis 0,78 s streut.</p>
-      <p><strong>Bei wiederkehrendem Präfix dreht sich das Bild.</strong> SGLang erreicht 70,6 gegen
-        vLLMs 39,5 tok/s — im Szenario davor, beim ersten Kontakt mit demselben Präfix, war es umgekehrt
-        (38,0 gegen 64,6). RadixAttention liefert also genau im vorhergesagten Fall.</p>
+      <h3>What the numbers mean</h3>
+      <p><strong>vLLM wins on throughput, and the lead grows with concurrency</strong> — the opposite of
+        the common expectation that SGLang scales better over parallelism.</p>
+      <p><strong>SGLang wins on latency, clearly and stably.</strong> TTFT sits between 0.19 and 0.29 s
+        almost independently of load and prompt length, while vLLM scatters up to 0.78 s.</p>
+      <p><strong>On a recurring prefix the picture inverts.</strong> SGLang reaches 70.6 against vLLM's
+        39.5 tok/s — in the scenario before it, on first contact with that same prefix, it was the other
+        way round (38.0 against 64.6). RadixAttention therefore delivers in exactly the predicted
+        case.</p>
 
       <details class="deep">
-        <summary>Die widerlegte Behauptung zu sm_121a</summary>
+        <summary>The refuted claim about sm_121a</summary>
         <div class="deep-body">
-          <p>Ausgangspunkt war die Aussage, SGLang scheitere auf GB10, weil die vorkompilierten
-            <code>sgl_kernel</code>-Wheels keine sm_121a-Kernels enthielten und nur ein Neubau aus dem
-            Quellcode helfe. Zweistufig geprüft:</p>
-          <p><strong>Quellcode</strong> — in <code>sgl-kernel/CMakeLists.txt</code> wird der Gencode
-            erzeugt, wenn CUDA ≥ 13.0 <em>und</em> aarch64 vorliegen. Genau der cu130-Build auf dieser
-            Maschine.</p>
-          <p><strong>Binary</strong> — <code>cuobjdump</code> über die installierten Bibliotheken:</p>
+          <p>The starting point was the claim that SGLang fails on GB10 because the prebuilt
+            <code>sgl_kernel</code> wheels contain no sm_121a kernels and only a rebuild from source
+            helps. Checked in two stages:</p>
+          <p><strong>Source</strong> — in <code>sgl-kernel/CMakeLists.txt</code> the gencode is emitted
+            when CUDA ≥ 13.0 <em>and</em> aarch64 apply. Precisely the cu130 build on this machine.</p>
+          <p><strong>Binary</strong> — <code>cuobjdump</code> over the installed libraries:</p>
           <pre>common_ops.abi3.so   80M   sm_90 sm_90a sm_100a sm_103a sm_110a sm_120a <span class="hl">sm_121a</span>
 spatial_ops.abi3.so  196K  sm_90 sm_90a sm_100a sm_103a sm_110a sm_120a <span class="hl">sm_121a</span>
-flashmla_ops.abi3.so 12M   sm_90a sm_100a sm_103a          <span class="dim">— kein sm_121</span>
-flash_ops.abi3.so    309M  sm_90a                          <span class="dim">— FA3, Hopper-exklusiv</span></pre>
-          <p>Die Hauptkernel-Bibliothek enthält sm_121a. Dass FA3 und FlashMLA fehlen, ist korrekt und
-            irrelevant — beide sind auf GB10 ohnehin nicht nutzbar. SGLang lief ohne jeden Eigenbau.</p>
+flashmla_ops.abi3.so 12M   sm_90a sm_100a sm_103a          <span class="dim">— no sm_121</span>
+flash_ops.abi3.so    309M  sm_90a                          <span class="dim">— FA3, Hopper-exclusive</span></pre>
+          <p>The main kernel library contains sm_121a. That FA3 and FlashMLA are missing is correct and
+            irrelevant — neither is usable on GB10 anyway. SGLang ran without any source build.</p>
         </div>
       </details>
     </section>
 
-    <!-- ============ Formate ============ -->
+    <!-- ============ Formats ============ -->
     <section id="formate">
-      <h2>INT4 gegen NVFP4</h2>
+      <h2>INT4 against NVFP4</h2>
 
-      <p>Zwei Tests, zwei gegensätzliche Ergebnisse — und der Unterschied liegt nicht am Format, sondern
-        an den Randbedingungen.</p>
+      <p>Two tests, two opposite results — and the difference lies not in the format but in the boundary
+        conditions.</p>
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Testfall</th><th class="num">Gewichte NVFP4 / INT4</th><th class="num">KV-Cache NVFP4 / INT4</th><th>Ergebnis</th></tr></thead>
+          <thead><tr><th>Test case</th><th class="num">Weights NVFP4 / INT4</th><th class="num">KV cache NVFP4 / INT4</th><th>Result</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna-S-2.1</td><td class="num">95,63 / 69,34 GiB</td><td class="num">94k / 950k</td><td><strong>INT4</strong>, +19 bis +246 %</td></tr>
-            <tr><td class="rowlab">Gemma-4-26B</td><td class="num">15,88 / 16,63 GiB</td><td class="num">3,91 / 3,88 Mio</td><td><strong>lastabhängig</strong></td></tr>
+            <tr><td class="rowlab">Laguna-S-2.1</td><td class="num">95.63 / 69.34 GiB</td><td class="num">94k / 950k</td><td><strong>INT4</strong>, +19 to +246 %</td></tr>
+            <tr><td class="rowlab">Gemma-4-26B</td><td class="num">15.88 / 16.63 GiB</td><td class="num">3.91 / 3.88 M</td><td><strong>load-dependent</strong></td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Der Laguna-Fall: Speicher entscheidet</h3>
-      <p>NVFP4 belegte 95,63 von 121 GiB, sodass nur 6,97 GiB für den KV-Cache blieben — rechnerisch
-        <strong>1,44 parallele Requests</strong> bei vollem Kontext. Der Checkpoint verbrauchte zudem
-        doppelt so viel KV-Speicher pro Token (77,7 gegen 38,8 KiB), was auf einen Build-Fehler hindeutet.
-        INT4 gewann dort nicht wegen des Rechenpfads, sondern weil es 26 GiB kleiner war.</p>
+      <h3>The Laguna case: memory decides</h3>
+      <p>NVFP4 occupied 95.63 of 121 GiB, leaving only 6.97 GiB for the KV cache — arithmetically
+        <strong>1.44 concurrent requests</strong> at full context. The checkpoint also consumed twice as
+        much KV memory per token (77.7 against 38.8 KiB), which points to a build fault. INT4 won there
+        not because of the compute path but because it was 26 GiB smaller.</p>
 
-      <h3>Der Gemma-4-Fall: der Kernel-Pfad wird sichtbar</h3>
-      <p>Beide Varianten unterscheiden sich um 0,75 GiB Gewichte und 0,9 % KV-Cache. Was übrig bleibt,
-        protokolliert vLLM beim Start:</p>
+      <h3>The Gemma-4 case: the kernel path becomes visible</h3>
+      <p>The two variants differ by 0.75 GiB of weights and 0.9 % of KV cache. What remains is logged by
+        vLLM at startup:</p>
       <pre><span class="dim">NVFP4:</span> Using '<span class="hl">FLASHINFER_CUTLASS</span>' NvFp4 MoE backend
 <span class="dim">INT4: </span> Using '<span class="hl">MARLIN</span>' WNA16 MoE backend</pre>
 
       <div class="scroller">
         <table>
-          <caption>Gemma-4 · Gesamtdurchsatz und Decode-Rate je Stream, Prosa</caption>
-          <thead><tr><th class="num">c</th><th class="num">NVFP4 gesamt</th><th class="num">INT4 gesamt</th><th class="num">NVFP4 je Stream</th><th class="num">INT4 je Stream</th></tr></thead>
+          <caption>Gemma-4 · total throughput and decode rate per stream, prose</caption>
+          <thead><tr><th class="num">c</th><th class="num">NVFP4 total</th><th class="num">INT4 total</th><th class="num">NVFP4 per stream</th><th class="num">INT4 per stream</th></tr></thead>
           <tbody>
-            <tr><td class="num">1</td><td class="num best">53,0</td><td class="num">43,9</td><td class="num best">53,5</td><td class="num">44,1</td></tr>
-            <tr><td class="num">2</td><td class="num best">101,0</td><td class="num">94,9</td><td class="num best">50,9</td><td class="num">46,7</td></tr>
-            <tr><td class="num">4</td><td class="num">170,6</td><td class="num best">177,1</td><td class="num">43,2</td><td class="num best">45,5</td></tr>
+            <tr><td class="num">1</td><td class="num best">53.0</td><td class="num">43.9</td><td class="num best">53.5</td><td class="num">44.1</td></tr>
+            <tr><td class="num">2</td><td class="num best">101.0</td><td class="num">94.9</td><td class="num best">50.9</td><td class="num">46.7</td></tr>
+            <tr><td class="num">4</td><td class="num">170.6</td><td class="num best">177.1</td><td class="num">43.2</td><td class="num best">45.5</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p><strong>Marlin amortisiert seinen Entpack-Aufwand über den Batch</strong> und hält 44–47 tok/s
-        über alle Laststufen. <strong>FlashInfer-CUTLASS arbeitet schon bei einem Stream nahe seinem
-        Optimum</strong> und verliert entsprechend, wenn die Last steigt.</p>
+      <p><strong>Marlin amortises its unpacking cost over the batch</strong> and holds 44–47 tok/s across
+        all load levels. <strong>FlashInfer-CUTLASS already works near its optimum at a single
+        stream</strong> and loses accordingly as load rises.</p>
 
-      <p>Beim kalten Prefill — dem rechenintensivsten Fall — bleibt NVFP4 durchgehend vorn, mit
-        schrumpfendem Abstand: 28 % bei 4k Token, 22 % bei 16k, 12 % bei 65k, 6 % bei 132k.</p>
+      <p>On cold prefill — the most compute-intensive case — NVFP4 stays ahead throughout, with a
+        shrinking margin: 28 % at 4k tokens, 22 % at 16k, 12 % at 65k, 6 % at 132k.</p>
 
       <div class="note">
-        <h4>Faustregel</h4>
-        <p>Ist der Speicher knapp, entscheidet die Dateigröße — unabhängig vom Format. Ist er es nicht,
-          gewinnt NVFP4 bei niedriger Last um rund 17 % und liegt ab vier parallelen Streams gleichauf.
-          Die pauschale Aussage „NVFP4 ist auf Blackwell nativ und daher schneller" gilt nur im
-          Teillastbereich.</p>
+        <h4>Rule of thumb</h4>
+        <p>If memory is tight, file size decides — regardless of format. If it is not, NVFP4 wins by
+          around 17 % at low load and draws level from four concurrent streams on. The blanket claim
+          “NVFP4 is native on Blackwell and therefore faster” holds only in the partial-load range.</p>
       </div>
     </section>
 
-    <!-- ============ Präfix ============ -->
+    <!-- ============ Prefix ============ -->
     <section id="praefix">
-      <h2>Der Präfix-Cache</h2>
+      <h2>The prefix cache</h2>
 
-      <p>Der folgenreichste Befund der Reihe, und er hängt weder an der Engine noch am Format, sondern an
-        der Attention-Architektur des Modells.</p>
+      <p>The most consequential finding of the series, and it depends neither on the engine nor on the
+        format but on the model's attention architecture.</p>
 
       <div class="scroller">
         <table>
-          <caption>Zeit bis zum ersten Token bei ~16k Token Prompt</caption>
-          <thead><tr><th>Modell</th><th>Attention</th><th class="num">kalt</th><th class="num">warm</th><th class="num">Faktor</th></tr></thead>
+          <caption>Time to first token at a ~16k-token prompt</caption>
+          <thead><tr><th>Model</th><th>Attention</th><th class="num">cold</th><th class="num">warm</th><th class="num">Factor</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna-S-2.1</td><td>Sliding Window 512</td><td class="num">9,32 s</td><td class="num">0,30 s</td><td class="num best">≈ 30</td></tr>
-            <tr><td class="rowlab">Gemma-4-26B</td><td>Sliding Window 1024</td><td class="num">3,13 s</td><td class="num">0,093 s</td><td class="num best">≈ 34</td></tr>
-            <tr><td class="rowlab">Qwen3.6-35B</td><td>lineare Attention</td><td class="num">3,09 s</td><td class="num worse">2,81 s</td><td class="num worse">1,0</td></tr>
+            <tr><td class="rowlab">Laguna-S-2.1</td><td>sliding window 512</td><td class="num">9.32 s</td><td class="num">0.30 s</td><td class="num best">≈ 30</td></tr>
+            <tr><td class="rowlab">Gemma-4-26B</td><td>sliding window 1024</td><td class="num">3.13 s</td><td class="num">0.093 s</td><td class="num best">≈ 34</td></tr>
+            <tr><td class="rowlab">Qwen3.6-35B</td><td>linear attention</td><td class="num">3.09 s</td><td class="num worse">2.81 s</td><td class="num worse">1.0</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Bei Qwen3.6 sind warmer und kalter Lauf <strong>identisch</strong>. Der Nachweis erfolgte
-        zweifach: die gemessene Kaltrate von 5301 tok/s ergibt für 16 384 Token rechnerisch 3,09 s — im
-        Hauptlauf gemessen wurden 2,81 s. Es gab nie einen Cache-Treffer. Zusätzlich stieg die TTFT dort
-        linear mit der Concurrency (2,8 / 4,4 / 7,2 s), während sie bei den anderen beiden nahezu konstant
-        blieb.</p>
+      <p>With Qwen3.6 the warm and cold runs are <strong>identical</strong>. The evidence is twofold: the
+        measured cold rate of 5301 tok/s works out to 3.09 s for 16,384 tokens — and 2.81 s was measured
+        in the main run. There never was a cache hit. On top of that, TTFT there rose linearly with
+        concurrency (2.8 / 4.4 / 7.2 s), while for the other two it stayed nearly constant.</p>
 
-      <p><strong>Erklärungsansatz:</strong> Lineare Attention führt einen sequenziell fortgeschriebenen
-        Zustand mit, der sich nicht wie ein KV-Cache stückweise adressieren und wiederverwenden lässt.
-        Die Hypothese entstand im Qwen-Test und wurde im Gemma-4-Test durch die Gegenprobe gestützt —
-        direkt nachgewiesen ist sie nicht.</p>
+      <p><strong>Attempted explanation:</strong> linear attention carries a sequentially updated state
+        that cannot be addressed and reused piecewise the way a KV cache can. The hypothesis arose in the
+        Qwen test and was supported by the counter-check in the Gemma-4 test — it is not directly
+        demonstrated.</p>
 
       <div class="note caution">
-        <h4>Praktische Tragweite</h4>
-        <p>Ein Agent, der über zwanzig Turns denselben 16k-Kontext mitschleppt, zahlt bei Qwen3.6 jedes
-          Mal 2,8 s. Bei Gemma-4 sind es nach dem ersten Mal 0,093 s. Über zwanzig Turns summiert sich
-          das auf 56 gegen 5 Sekunden — ein Unterschied, den kein Durchsatzvorteil ausgleicht.</p>
+        <h4>Practical scope</h4>
+        <p>An agent carrying the same 16k context across twenty turns pays 2.8 s every time with Qwen3.6.
+          With Gemma-4 it is 0.093 s after the first time. Over twenty turns that adds up to 56 against 5
+          seconds — a difference no throughput advantage makes up for.</p>
       </div>
     </section>
 
     <!-- ============ Prefill ============ -->
     <section id="prefill">
-      <h2>Prefill-Skalierung</h2>
+      <h2>Prefill scaling</h2>
 
-      <p>Alle drei Modelle dämpfen den quadratischen Attention-Anteil erfolgreich — Laguna und Gemma-4
-        über Sliding Windows, Qwen3.6 über lineare Attention.</p>
+      <p>All three models successfully dampen the quadratic attention term — Laguna and Gemma-4 via
+        sliding windows, Qwen3.6 via linear attention.</p>
 
       <div class="scroller">
         <table>
-          <caption>Kaltes Prefill in tok/s, einmaliger Präfix je Request</caption>
-          <thead><tr><th class="num">Prompt-Token</th><th class="num">Laguna INT4</th><th class="num">Qwen3.6</th><th class="num">Gemma-4 NVFP4</th></tr></thead>
+          <caption>Cold prefill in tok/s, unique prefix per request</caption>
+          <thead><tr><th class="num">Prompt tokens</th><th class="num">Laguna INT4</th><th class="num">Qwen3.6</th><th class="num">Gemma-4 NVFP4</th></tr></thead>
           <tbody>
-            <tr><td class="num">≈ 4 000</td><td class="num">2255</td><td class="num">5064</td><td class="num best">7161</td></tr>
-            <tr><td class="num">≈ 16 000</td><td class="num">2301</td><td class="num best">5301</td><td class="num">5238</td></tr>
-            <tr><td class="num">≈ 65 000</td><td class="num">1850</td><td class="num best">4033</td><td class="num">2396</td></tr>
-            <tr><td class="num">≈ 132 000</td><td class="num">1484</td><td class="num best">3060</td><td class="num">1416</td></tr>
-            <tr><td class="num">≈ 200 000</td><td class="num">1224</td><td class="num best">2429</td><td class="num">—</td></tr>
+            <tr><td class="num">≈ 4,000</td><td class="num">2255</td><td class="num">5064</td><td class="num best">7161</td></tr>
+            <tr><td class="num">≈ 16,000</td><td class="num">2301</td><td class="num best">5301</td><td class="num">5238</td></tr>
+            <tr><td class="num">≈ 65,000</td><td class="num">1850</td><td class="num best">4033</td><td class="num">2396</td></tr>
+            <tr><td class="num">≈ 132,000</td><td class="num">1484</td><td class="num best">3060</td><td class="num">1416</td></tr>
+            <tr><td class="num">≈ 200,000</td><td class="num">1224</td><td class="num best">2429</td><td class="num">—</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="scroller">
         <table>
-          <caption>Komplexität, abgeleitet aus dem Verhältnis Längenzuwachs zu Zeitzuwachs</caption>
-          <thead><tr><th>Modell</th><th class="num">Komplexität</th><th class="num">Rate bei 132k</th><th>Architektur</th></tr></thead>
+          <caption>Complexity, derived from the ratio of length growth to time growth</caption>
+          <thead><tr><th>Model</th><th class="num">Complexity</th><th class="num">Rate at 132k</th><th>Architecture</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna</td><td class="num">O(n<sup>1,25</sup>)</td><td class="num">64 %</td><td>Fenster 512, 12 von 48 voll</td></tr>
-            <tr><td class="rowlab">Qwen3.6</td><td class="num">O(n<sup>1,29</sup>)</td><td class="num best">58 %</td><td>lineare Attention, 3 von 4</td></tr>
-            <tr><td class="rowlab">Gemma-4</td><td class="num">steiler</td><td class="num worse">27 %</td><td>Fenster 1024, 5 von 30 voll</td></tr>
+            <tr><td class="rowlab">Laguna</td><td class="num">O(n<sup>1.25</sup>)</td><td class="num">64 %</td><td>window 512, 12 of 48 full</td></tr>
+            <tr><td class="rowlab">Qwen3.6</td><td class="num">O(n<sup>1.29</sup>)</td><td class="num best">58 %</td><td>linear attention, 3 of 4</td></tr>
+            <tr><td class="rowlab">Gemma-4</td><td class="num">steeper</td><td class="num worse">27 %</td><td>window 1024, 5 of 30 full</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Bei reiner Voll-Attention wäre ein Einbruch auf unter 10 % zu erwarten gewesen. Gemma-4 fällt am
-        steilsten ab — plausibel wegen der doppelt so großen Fenster und des höheren Anteils voller
-        Attention. Es ist damit bei kurzen Prompts das schnellste und bei sehr langen das langsamste
-        Modell der Reihe.</p>
+      <p>With pure full attention a collapse to below 10 % would have been expected. Gemma-4 falls off
+        most steeply — plausibly because of its twice-as-large windows and higher share of full attention.
+        That makes it the fastest model of the series on short prompts and the slowest on very long
+        ones.</p>
     </section>
 
-    <!-- ============ Speicher ============ -->
+    <!-- ============ Memory ============ -->
     <section id="speicher">
-      <h2>Speicher als Hauptvariable</h2>
+      <h2>Memory as the main variable</h2>
 
       <div class="scroller">
         <table>
-          <caption>121 GB Unified Memory, geteilt zwischen Betriebssystem, Gewichten, KV-Cache und Compiler</caption>
-          <thead><tr><th>Konfiguration</th><th class="num">Gewichte</th><th class="num">KV-Cache</th><th class="num">KV je Token</th><th class="num">Concurrency</th></tr></thead>
+          <caption>121 GB unified memory, shared between operating system, weights, KV cache and compiler</caption>
+          <thead><tr><th>Configuration</th><th class="num">Weights</th><th class="num">KV cache</th><th class="num">KV per token</th><th class="num">Concurrency</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Laguna NVFP4</td><td class="num worse">95,63 GiB</td><td class="num worse">94 135</td><td class="num">77,7 KiB</td><td class="num worse">1,44× bei 65k</td></tr>
-            <tr><td class="rowlab">Laguna INT4 (65k)</td><td class="num">69,34 GiB</td><td class="num">950 420</td><td class="num">38,8 KiB</td><td class="num">14,50× bei 65k</td></tr>
-            <tr><td class="rowlab">Laguna INT4 (262k)</td><td class="num">69,34 GiB</td><td class="num">1 001 532</td><td class="num">38,8 KiB</td><td class="num">3,82× bei 262k</td></tr>
-            <tr><td class="rowlab">Laguna INT4 SGLang</td><td class="num">67,56 GB</td><td class="num">185 897</td><td class="num">—</td><td class="num">48 Requests</td></tr>
-            <tr><td class="rowlab">Qwen3.6 NVFP4</td><td class="num">23,45 GiB</td><td class="num">3 366 051</td><td class="num">≈ 25 KiB</td><td class="num">12,84× bei 262k</td></tr>
-            <tr><td class="rowlab">Gemma-4 NVFP4</td><td class="num best">15,88 GiB</td><td class="num best">3 912 140</td><td class="num">—</td><td class="num best">14,92× bei 262k</td></tr>
-            <tr><td class="rowlab">Gemma-4 INT4</td><td class="num">16,63 GiB</td><td class="num">3 875 400</td><td class="num">—</td><td class="num">14,78× bei 262k</td></tr>
+            <tr><td class="rowlab">Laguna NVFP4</td><td class="num worse">95.63 GiB</td><td class="num worse">94,135</td><td class="num">77.7 KiB</td><td class="num worse">1.44× at 65k</td></tr>
+            <tr><td class="rowlab">Laguna INT4 (65k)</td><td class="num">69.34 GiB</td><td class="num">950,420</td><td class="num">38.8 KiB</td><td class="num">14.50× at 65k</td></tr>
+            <tr><td class="rowlab">Laguna INT4 (262k)</td><td class="num">69.34 GiB</td><td class="num">1,001,532</td><td class="num">38.8 KiB</td><td class="num">3.82× at 262k</td></tr>
+            <tr><td class="rowlab">Laguna INT4 SGLang</td><td class="num">67.56 GB</td><td class="num">185,897</td><td class="num">—</td><td class="num">48 requests</td></tr>
+            <tr><td class="rowlab">Qwen3.6 NVFP4</td><td class="num">23.45 GiB</td><td class="num">3,366,051</td><td class="num">≈ 25 KiB</td><td class="num">12.84× at 262k</td></tr>
+            <tr><td class="rowlab">Gemma-4 NVFP4</td><td class="num best">15.88 GiB</td><td class="num best">3,912,140</td><td class="num">—</td><td class="num best">14.92× at 262k</td></tr>
+            <tr><td class="rowlab">Gemma-4 INT4</td><td class="num">16.63 GiB</td><td class="num">3,875,400</td><td class="num">—</td><td class="num">14.78× at 262k</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>Die Spanne beim KV-Cache beträgt <strong>Faktor 41,6</strong>. Laguna NVFP4 ist mit 1,44
-        parallelen Vollkontext-Requests für Mehrbenutzerbetrieb praktisch unbrauchbar, Gemma-4 mit 14,92
-        komfortabel.</p>
+      <p>The spread in KV cache is a <strong>factor of 41.6</strong>. At 1.44 concurrent full-context
+        requests, Laguna NVFP4 is practically unusable for multi-user operation; Gemma-4 at 14.92 is
+        comfortable.</p>
 
       <div class="note">
-        <h4>Ein Befund nebenbei: das Kontextfenster ist gratis</h4>
-        <p>Die Anhebung von <code>--max-model-len</code> bei Laguna INT4 von 65 536 auf 262 144 kostete
-          keinen KV-Cache — sie brachte sogar 5 % mehr (1 001 532 statt 950 420 Token), vermutlich durch
-          günstigere Blockaufteilung. Es gibt keinen Grund, unter dem Maximum des Checkpoints zu bleiben.</p>
+        <h4>An incidental finding: the context window is free</h4>
+        <p>Raising <code>--max-model-len</code> for Laguna INT4 from 65,536 to 262,144 cost no KV cache —
+          it even yielded 5 % more (1,001,532 instead of 950,420 tokens), presumably through a more
+          favourable block layout. There is no reason to stay below the checkpoint's maximum.</p>
       </div>
     </section>
 
-    <!-- ============ Volldaten ============ -->
+    <!-- ============ Full data ============ -->
     <section id="volldaten">
-      <h2>Vollständige Messdaten</h2>
+      <h2>Complete measurement data</h2>
 
       <details class="deep">
-        <summary>Gesamtdurchsatz aller sechs Konfigurationen (tok/s)</summary>
+        <summary>Total throughput of all six configurations (tok/s)</summary>
         <div class="deep-body">
           <div class="scroller">
             <table>
-              <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">Lag NVFP4</th><th class="num">Lag INT4</th><th class="num">Lag SGLang</th><th class="num">Qwen3.6</th><th class="num">Gem NVFP4</th><th class="num">Gem INT4</th></tr></thead>
+              <thead><tr><th>Scenario</th><th class="num">c</th><th class="num">Lag NVFP4</th><th class="num">Lag INT4</th><th class="num">Lag SGLang</th><th class="num">Qwen3.6</th><th class="num">Gem NVFP4</th><th class="num">Gem INT4</th></tr></thead>
               <tbody>
-                <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">17,3</td><td class="num">20,6</td><td class="num">18,2</td><td class="num best">60,7</td><td class="num">53,0</td><td class="num">43,9</td></tr>
-                <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">25,5</td><td class="num">31,7</td><td class="num">27,8</td><td class="num best">101,3</td><td class="num">101,0</td><td class="num">94,9</td></tr>
-                <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">42,7</td><td class="num">52,8</td><td class="num">45,3</td><td class="num best">180,7</td><td class="num">170,6</td><td class="num">177,1</td></tr>
-                <tr class="sep"><td class="rowlab">Code</td><td class="num">1</td><td class="num">15,0</td><td class="num">23,8</td><td class="num">21,9</td><td class="num best">63,5</td><td class="num">53,1</td><td class="num">44,1</td></tr>
-                <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">27,4</td><td class="num">39,0</td><td class="num">33,2</td><td class="num best">121,2</td><td class="num">101,5</td><td class="num">95,0</td></tr>
-                <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">42,4</td><td class="num">64,3</td><td class="num">56,2</td><td class="num best">201,2</td><td class="num">173,6</td><td class="num">172,5</td></tr>
-                <tr class="sep"><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">5,8</td><td class="num">13,1</td><td class="num">6,3</td><td class="num">16,0</td><td class="num best">27,6</td><td class="num">22,8</td></tr>
-                <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num">11,6</td><td class="num">38,9</td><td class="num">25,1</td><td class="num">18,8</td><td class="num best">82,3</td><td class="num">75,9</td></tr>
-                <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num">18,7</td><td class="num">64,6</td><td class="num">38,0</td><td class="num">20,3</td><td class="num best">142,5</td><td class="num">140,0</td></tr>
-                <tr class="sep"><td class="rowlab">Prefill wdh.</td><td class="num">1</td><td class="num">7,5</td><td class="num">24,0</td><td class="num">25,4</td><td class="num">16,5</td><td class="num best">44,8</td><td class="num">38,3</td></tr>
-                <tr><td class="rowlab">Prefill wdh.</td><td class="num">2</td><td class="num">11,8</td><td class="num">31,1</td><td class="num">41,1</td><td class="num">19,2</td><td class="num best">85,5</td><td class="num">77,8</td></tr>
-                <tr><td class="rowlab">Prefill wdh.</td><td class="num">4</td><td class="num">17,6</td><td class="num">39,5</td><td class="num">70,6</td><td class="num">20,3</td><td class="num best">141,1</td><td class="num">136,2</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">1</td><td class="num">17.3</td><td class="num">20.6</td><td class="num">18.2</td><td class="num best">60.7</td><td class="num">53.0</td><td class="num">43.9</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">2</td><td class="num">25.5</td><td class="num">31.7</td><td class="num">27.8</td><td class="num best">101.3</td><td class="num">101.0</td><td class="num">94.9</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">4</td><td class="num">42.7</td><td class="num">52.8</td><td class="num">45.3</td><td class="num best">180.7</td><td class="num">170.6</td><td class="num">177.1</td></tr>
+                <tr class="sep"><td class="rowlab">Code</td><td class="num">1</td><td class="num">15.0</td><td class="num">23.8</td><td class="num">21.9</td><td class="num best">63.5</td><td class="num">53.1</td><td class="num">44.1</td></tr>
+                <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">27.4</td><td class="num">39.0</td><td class="num">33.2</td><td class="num best">121.2</td><td class="num">101.5</td><td class="num">95.0</td></tr>
+                <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">42.4</td><td class="num">64.3</td><td class="num">56.2</td><td class="num best">201.2</td><td class="num">173.6</td><td class="num">172.5</td></tr>
+                <tr class="sep"><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">5.8</td><td class="num">13.1</td><td class="num">6.3</td><td class="num">16.0</td><td class="num best">27.6</td><td class="num">22.8</td></tr>
+                <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num">11.6</td><td class="num">38.9</td><td class="num">25.1</td><td class="num">18.8</td><td class="num best">82.3</td><td class="num">75.9</td></tr>
+                <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num">18.7</td><td class="num">64.6</td><td class="num">38.0</td><td class="num">20.3</td><td class="num best">142.5</td><td class="num">140.0</td></tr>
+                <tr class="sep"><td class="rowlab">Prefill rep.</td><td class="num">1</td><td class="num">7.5</td><td class="num">24.0</td><td class="num">25.4</td><td class="num">16.5</td><td class="num best">44.8</td><td class="num">38.3</td></tr>
+                <tr><td class="rowlab">Prefill rep.</td><td class="num">2</td><td class="num">11.8</td><td class="num">31.1</td><td class="num">41.1</td><td class="num">19.2</td><td class="num best">85.5</td><td class="num">77.8</td></tr>
+                <tr><td class="rowlab">Prefill rep.</td><td class="num">4</td><td class="num">17.6</td><td class="num">39.5</td><td class="num">70.6</td><td class="num">20.3</td><td class="num best">141.1</td><td class="num">136.2</td></tr>
               </tbody>
             </table>
           </div>
@@ -598,19 +593,19 @@ flash_ops.abi3.so    309M  sm_90a                          <span class="dim">—
       </details>
 
       <details class="deep">
-        <summary>Zeit bis zum ersten Token (Sekunden, Median)</summary>
+        <summary>Time to first token (seconds, median)</summary>
         <div class="deep-body">
           <div class="scroller">
             <table>
-              <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">Lag NVFP4</th><th class="num">Lag INT4</th><th class="num">Lag SGLang</th><th class="num">Qwen3.6</th><th class="num">Gem NVFP4</th><th class="num">Gem INT4</th></tr></thead>
+              <thead><tr><th>Scenario</th><th class="num">c</th><th class="num">Lag NVFP4</th><th class="num">Lag INT4</th><th class="num">Lag SGLang</th><th class="num">Qwen3.6</th><th class="num">Gem NVFP4</th><th class="num">Gem INT4</th></tr></thead>
               <tbody>
-                <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num">0,352</td><td class="num">0,276</td><td class="num">0,314</td><td class="num">0,094</td><td class="num best">0,036</td><td class="num">0,038</td></tr>
-                <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num">0,443</td><td class="num">0,635</td><td class="num">0,201</td><td class="num">0,259</td><td class="num best">0,036</td><td class="num">0,037</td></tr>
-                <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">0,427</td><td class="num">0,513</td><td class="num">0,193</td><td class="num">0,184</td><td class="num">0,069</td><td class="num best">0,064</td></tr>
-                <tr class="sep"><td class="rowlab">Code</td><td class="num">4</td><td class="num">0,374</td><td class="num">0,480</td><td class="num">0,194</td><td class="num">0,130</td><td class="num">0,078</td><td class="num best">0,076</td></tr>
-                <tr class="sep"><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">0,307</td><td class="num">0,309</td><td class="num">0,200</td><td class="num worse">2,806</td><td class="num">0,093</td><td class="num best">0,084</td></tr>
-                <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num">0,686</td><td class="num">0,551</td><td class="num">0,269</td><td class="num worse">7,226</td><td class="num best">0,153</td><td class="num">0,180</td></tr>
-                <tr><td class="rowlab">Prefill wdh.</td><td class="num">4</td><td class="num">0,781</td><td class="num">0,630</td><td class="num">0,285</td><td class="num worse">7,265</td><td class="num">0,142</td><td class="num best">0,128</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">1</td><td class="num">0.352</td><td class="num">0.276</td><td class="num">0.314</td><td class="num">0.094</td><td class="num best">0.036</td><td class="num">0.038</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">2</td><td class="num">0.443</td><td class="num">0.635</td><td class="num">0.201</td><td class="num">0.259</td><td class="num best">0.036</td><td class="num">0.037</td></tr>
+                <tr><td class="rowlab">Prose</td><td class="num">4</td><td class="num">0.427</td><td class="num">0.513</td><td class="num">0.193</td><td class="num">0.184</td><td class="num">0.069</td><td class="num best">0.064</td></tr>
+                <tr class="sep"><td class="rowlab">Code</td><td class="num">4</td><td class="num">0.374</td><td class="num">0.480</td><td class="num">0.194</td><td class="num">0.130</td><td class="num">0.078</td><td class="num best">0.076</td></tr>
+                <tr class="sep"><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">0.307</td><td class="num">0.309</td><td class="num">0.200</td><td class="num worse">2.806</td><td class="num">0.093</td><td class="num best">0.084</td></tr>
+                <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num">0.686</td><td class="num">0.551</td><td class="num">0.269</td><td class="num worse">7.226</td><td class="num best">0.153</td><td class="num">0.180</td></tr>
+                <tr><td class="rowlab">Prefill rep.</td><td class="num">4</td><td class="num">0.781</td><td class="num">0.630</td><td class="num">0.285</td><td class="num worse">7.265</td><td class="num">0.142</td><td class="num best">0.128</td></tr>
               </tbody>
             </table>
           </div>
@@ -618,281 +613,282 @@ flash_ops.abi3.so    309M  sm_90a                          <span class="dim">—
       </details>
     </section>
 
-    <!-- ============ Fallstricke ============ -->
+    <!-- ============ Pitfalls ============ -->
     <section id="fallstricke">
-      <h2>Übertragbare Fallstricke</h2>
+      <h2>Transferable pitfalls</h2>
 
-      <p>Aus vierzehn Serverstarts, von denen sechs scheiterten.</p>
+      <p>From fourteen server starts, six of which failed.</p>
 
-      <h3>Speicher und Compiler</h3>
+      <h3>Memory and compiler</h3>
       <div class="scroller">
         <table>
-          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <thead><tr><th>Pitfall</th><th>Symptom</th><th>Countermeasure</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab"><code>MAX_JOBS</code> zu hoch</td><td>OOM-Kill von <code>cicc</code> (7,5 GB je Prozess), <strong>kein Fehler im Anwendungslog</strong></td><td><code>MAX_JOBS=1</code> beim ersten Start; Kernel-Cache ist danach warm</td></tr>
-            <tr><td class="rowlab"><code>gpu-memory-utilization</code> > 0,89</td><td>Abbruch vor dem Laden</td><td>Das OS belegt ~11 GiB, die frei bleiben müssen</td></tr>
-            <tr><td class="rowlab"><code>mem-fraction-static</code> missverstanden</td><td>kleineres Modell schafft <em>keine</em> Systemluft</td><td>Der Parameter reserviert unabhängig von der Modellgröße; Ersparnis wandert in den KV-Cache</td></tr>
-            <tr><td class="rowlab">Verzögerte Speicherfreigabe</td><td>Neustart scheitert direkt nach dem Stoppen</td><td>Auf Freigabe warten, hier 5–15 s</td></tr>
+            <tr><td class="rowlab"><code>MAX_JOBS</code> too high</td><td>OOM kill of <code>cicc</code> (7.5 GB per process), <strong>no error in the application log</strong></td><td><code>MAX_JOBS=1</code> on the first start; the kernel cache is warm afterwards</td></tr>
+            <tr><td class="rowlab"><code>gpu-memory-utilization</code> > 0.89</td><td>abort before loading</td><td>The OS holds ~11 GiB that must stay free</td></tr>
+            <tr><td class="rowlab"><code>mem-fraction-static</code> misunderstood</td><td>a smaller model creates <em>no</em> system headroom</td><td>The parameter reserves independently of model size; the saving goes into the KV cache</td></tr>
+            <tr><td class="rowlab">Delayed memory release</td><td>restart fails immediately after stopping</td><td>Wait for the release, here 5–15 s</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Messung und Beobachtung</h3>
+      <h3>Measurement and observation</h3>
       <div class="scroller">
         <table>
-          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <thead><tr><th>Pitfall</th><th>Symptom</th><th>Countermeasure</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Erste Anfrage als Messung</td><td>3,8 statt 75 tok/s — Faktor 20 daneben</td><td>Expliziter Aufwärmlauf vor der Messung</td></tr>
-            <tr><td class="rowlab">Ausgabe im Feld <code>reasoning</code></td><td>TTFT bleibt ungesetzt, Decode-Rate über die Gesamtzeit gerechnet</td><td>Auf <code>content</code>, <code>reasoning</code> und <code>reasoning_content</code> prüfen</td></tr>
-            <tr><td class="rowlab">Hochgerechnete Restzeit als Tatsache</td><td>tqdm zeigte 1:48:53, real waren es 3:33</td><td>Bei ungleichmäßiger Arbeit die Rate über mehrere Schritte beobachten</td></tr>
-            <tr><td class="rowlab">Stehender Fortschrittsbalken</td><td>als „hängt" gedeutet, tatsächlich lief die Kompilierung</td><td>Nebenindikatoren prüfen: CPU-Last, wachsender Kernel-Cache</td></tr>
-            <tr><td class="rowlab">Unvollständige API-Daten</td><td>fehlende <code>size</code>-Felder als 0 verrechnet, 28 GB zu niedrig</td><td>Vollständigkeit der Antwort prüfen</td></tr>
-            <tr><td class="rowlab">Präfix-Cache stillschweigend wirkungslos</td><td>„warme" Werte identisch zu kalten, ohne Fehlermeldung</td><td>Gegen eine echte Kaltmessung mit einmaligem Präfix prüfen</td></tr>
-            <tr><td class="rowlab">Ergebnisdatei erst am Ende</td><td>Abbruch verwirft alle bereits gemessenen Stufen</td><td>Inkrementell schreiben oder aus dem Protokoll rekonstruieren</td></tr>
+            <tr><td class="rowlab">First request as a measurement</td><td>3.8 instead of 75 tok/s — off by a factor of 20</td><td>Explicit warm-up run before measuring</td></tr>
+            <tr><td class="rowlab">Output in the <code>reasoning</code> field</td><td>TTFT stays unset, decode rate computed over the total time</td><td>Check <code>content</code>, <code>reasoning</code> and <code>reasoning_content</code></td></tr>
+            <tr><td class="rowlab">Extrapolated remaining time as fact</td><td>tqdm showed 1:48:53, it was actually 3:33</td><td>On non-uniform work, watch the rate over several steps</td></tr>
+            <tr><td class="rowlab">Stationary progress bar</td><td>read as “hung”, when compilation was in fact running</td><td>Check secondary indicators: CPU load, growing kernel cache</td></tr>
+            <tr><td class="rowlab">Incomplete API data</td><td>missing <code>size</code> fields counted as 0, 28 GB too low</td><td>Verify the response is complete</td></tr>
+            <tr><td class="rowlab">Prefix cache silently ineffective</td><td>“warm” values identical to cold ones, with no error message</td><td>Check against a true cold measurement with a unique prefix</td></tr>
+            <tr><td class="rowlab">Result file written only at the end</td><td>an abort discards every stage already measured</td><td>Write incrementally or reconstruct from the log</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Werkzeuge und Umgebung</h3>
+      <h3>Tools and environment</h3>
       <div class="scroller">
         <table>
-          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <thead><tr><th>Pitfall</th><th>Symptom</th><th>Countermeasure</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Exit-Code in Pipeline verschluckt</td><td><code>docker pull … | tail -5</code> meldet Erfolg trotz <code>permission denied</code></td><td>Exit-Code der ersten Stufe prüfen</td></tr>
-            <tr><td class="rowlab"><code>pkill -f</code> trifft die eigene Shell</td><td>Exit 143/144, Ziel läuft weiter</td><td>PIDs über <code>ps</code> ermitteln, gezielt beenden</td></tr>
-            <tr><td class="rowlab">Server stirbt mit der Sitzung</td><td>Log bricht nach wenigen Zeilen ab, kein Fehler</td><td><code>setsid nohup … &lt; /dev/null &amp;</code></td></tr>
-            <tr><td class="rowlab">Torch-ABI-Bruch</td><td><code>undefined symbol: _ZNK2at10TensorBase…</code></td><td>Die von der Bibliothek gepinnte Torch-Version verwenden</td></tr>
-            <tr><td class="rowlab">Falsches CUDA-Wheel</td><td>fehlende sm_121a-Kernels bei cu12x</td><td>Auf dem Spark ausschließlich <code>-cu130</code> auf aarch64</td></tr>
-            <tr><td class="rowlab">Fehlende Python-Header</td><td>Triton-JIT scheitert ohne <code>python3.12-dev</code></td><td><code>uv python install 3.12</code> bringt sie mit, kein sudo nötig</td></tr>
+            <tr><td class="rowlab">Exit code swallowed by a pipeline</td><td><code>docker pull … | tail -5</code> reports success despite <code>permission denied</code></td><td>Check the exit code of the first stage</td></tr>
+            <tr><td class="rowlab"><code>pkill -f</code> hits your own shell</td><td>exit 143/144, the target keeps running</td><td>Determine PIDs via <code>ps</code>, kill them specifically</td></tr>
+            <tr><td class="rowlab">Server dies with the session</td><td>log breaks off after a few lines, no error</td><td><code>setsid nohup … &lt; /dev/null &amp;</code></td></tr>
+            <tr><td class="rowlab">Torch ABI break</td><td><code>undefined symbol: _ZNK2at10TensorBase…</code></td><td>Use the torch version pinned by the library</td></tr>
+            <tr><td class="rowlab">Wrong CUDA wheel</td><td>missing sm_121a kernels on cu12x</td><td>On the Spark use <code>-cu130</code> on aarch64 exclusively</td></tr>
+            <tr><td class="rowlab">Missing Python headers</td><td>Triton JIT fails without <code>python3.12-dev</code></td><td><code>uv python install 3.12</code> ships them, no sudo needed</td></tr>
+            <tr><td class="rowlab">Model revision not pinned</td><td>upstream moves <code>main</code>; 93 GB re-downloaded in silence, then the start aborts on the KV cache</td><td>Pin <code>--revision</code> for model and draft; a checkpoint can stay “INT4” in name while quantizing less</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- ============ Widerlegt ============ -->
+    <!-- ============ Refuted ============ -->
     <section id="widerlegt">
-      <h2>Widerlegte Annahmen</h2>
+      <h2>Refuted assumptions</h2>
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Annahme</th><th>Befund</th><th>Beleg</th></tr></thead>
+          <thead><tr><th>Assumption</th><th>Finding</th><th>Evidence</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab"><code>sgl_kernel</code> ohne sm_121a, nur mit Neubau lauffähig</td><td><span class="pill fail">falsch</span></td><td>cuobjdump zeigt sm_121a; SGLang lief ohne Eigenbau</td></tr>
-            <tr><td class="rowlab">NVFP4 ist generell die Wahl für den Spark</td><td><span class="pill fail">falsch</span></td><td>hängt vom Speicherdruck ab; bei Laguna verlor NVFP4 klar</td></tr>
-            <tr><td class="rowlab">INT4 schlägt NVFP4 auf dieser Hardware</td><td><span class="pill warn">nur unter Speicherdruck</span></td><td>bei Gemma-4 gewinnt NVFP4 im Teillastbereich</td></tr>
-            <tr><td class="rowlab">SGLang skaliert besser über Concurrency</td><td><span class="pill fail">falsch</span></td><td>vLLMs Vorsprung wächst von 13 auf 17 %</td></tr>
-            <tr><td class="rowlab">Prefill 600–800 tok/s</td><td><span class="pill warn">deutlich zu niedrig</span></td><td>1224 bis 7161 tok/s je nach Modell und Länge</td></tr>
-            <tr><td class="rowlab"><code>MAX_JOBS=4</code> genügt</td><td><span class="pill warn">zu schwach</span></td><td>führte zum OOM-Kill; nötig war <code>MAX_JOBS=1</code></td></tr>
-            <tr><td class="rowlab">SGLangs Graph-Capturing hängt auf sm_121</td><td><span class="pill fail">falsch</span></td><td>3 min 33 s, nicht die hochgerechneten 1 h 50 min</td></tr>
+            <tr><td class="rowlab"><code>sgl_kernel</code> lacks sm_121a, runs only after a rebuild</td><td><span class="pill fail">false</span></td><td>cuobjdump shows sm_121a; SGLang ran without a source build</td></tr>
+            <tr><td class="rowlab">NVFP4 is generally the choice for the Spark</td><td><span class="pill fail">false</span></td><td>depends on memory pressure; with Laguna, NVFP4 lost clearly</td></tr>
+            <tr><td class="rowlab">INT4 beats NVFP4 on this hardware</td><td><span class="pill warn">only under memory pressure</span></td><td>with Gemma-4, NVFP4 wins in the partial-load range</td></tr>
+            <tr><td class="rowlab">SGLang scales better over concurrency</td><td><span class="pill fail">false</span></td><td>vLLM's lead grows from 13 to 17 %</td></tr>
+            <tr><td class="rowlab">Prefill 600–800 tok/s</td><td><span class="pill warn">far too low</span></td><td>1224 to 7161 tok/s depending on model and length</td></tr>
+            <tr><td class="rowlab"><code>MAX_JOBS=4</code> is enough</td><td><span class="pill warn">not strict enough</span></td><td>led to the OOM kill; what was needed was <code>MAX_JOBS=1</code></td></tr>
+            <tr><td class="rowlab">SGLang's graph capturing hangs on sm_121</td><td><span class="pill fail">false</span></td><td>3 min 33 s, not the extrapolated 1 h 50 min</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- ============ Empfehlung ============ -->
+    <!-- ============ Recommendation ============ -->
     <section id="empfehlung">
-      <h2>Empfehlungsmatrix</h2>
+      <h2>Recommendation matrix</h2>
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Anwendungsfall</th><th>Empfehlung</th><th>Begründung</th></tr></thead>
+          <thead><tr><th>Use case</th><th>Recommendation</th><th>Rationale</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">Maximaler Durchsatz</td><td><strong>Qwen3.6-35B-A3B NVFP4</strong> auf vLLM</td><td>201 tok/s bei c=4</td></tr>
-            <tr><td class="rowlab">Minimale Antwortlatenz</td><td><strong>Gemma-4-26B-A4B NVFP4</strong> auf vLLM</td><td>0,036 s TTFT</td></tr>
-            <tr><td class="rowlab">Agent mit wachsender Historie</td><td><strong>Gemma-4</strong>, alternativ <strong>Laguna auf SGLang</strong></td><td>Cache-Faktor 34 bzw. +79 % bei wiederholtem Präfix</td></tr>
-            <tr><td class="rowlab">Viele parallele Nutzer</td><td><strong>Gemma-4</strong> (beide Formate)</td><td>14,9 Vollkontext-Requests gleichzeitig</td></tr>
-            <tr><td class="rowlab">Sehr lange Prompts</td><td><strong>Qwen3.6</strong></td><td>3060 tok/s noch bei 132k Token</td></tr>
-            <tr><td class="rowlab">Größtes Modell, das noch läuft</td><td><strong>Laguna-S-2.1 INT4</strong></td><td>aber 3× langsamer als die Alternativen</td></tr>
-            <tr><td class="rowlab"><span class="pill fail">nicht nehmen</span></td><td>Laguna NVFP4, FP8- und BF16-Varianten</td><td>1,44× Concurrency bzw. passen nicht in 121 GB</td></tr>
+            <tr><td class="rowlab">Maximum throughput</td><td><strong>Qwen3.6-35B-A3B NVFP4</strong> on vLLM</td><td>201 tok/s at c=4</td></tr>
+            <tr><td class="rowlab">Minimum response latency</td><td><strong>Gemma-4-26B-A4B NVFP4</strong> on vLLM</td><td>0.036 s TTFT</td></tr>
+            <tr><td class="rowlab">Agent with a growing history</td><td><strong>Gemma-4</strong>, alternatively <strong>Laguna on SGLang</strong></td><td>cache factor 34, or +79 % on a repeated prefix</td></tr>
+            <tr><td class="rowlab">Many concurrent users</td><td><strong>Gemma-4</strong> (either format)</td><td>14.9 full-context requests at once</td></tr>
+            <tr><td class="rowlab">Very long prompts</td><td><strong>Qwen3.6</strong></td><td>3060 tok/s even at 132k tokens</td></tr>
+            <tr><td class="rowlab">Largest model that still runs</td><td><strong>Laguna-S-2.1 INT4</strong></td><td>but 3× slower than the alternatives</td></tr>
+            <tr><td class="rowlab"><span class="pill fail">do not use</span></td><td>Laguna NVFP4, the FP8 and BF16 variants</td><td>1.44× concurrency, or they do not fit in 121 GB</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="note">
-        <h4>Wenn nur eine Konfiguration gewählt werden dürfte</h4>
-        <p><strong>Gemma-4-26B-A4B NVFP4 auf vLLM.</strong> Es gewinnt bei Latenz, KV-Cache und
-          Speicherbedarf, liegt beim Durchsatz nur knapp hinter Qwen3.6 — und hat als einziges der drei
-          Modelle sowohl einen funktionierenden Präfix-Cache <em>als auch</em> hohes Decode-Tempo, ohne
-          dafür auf spekulative Dekodierung angewiesen zu sein.</p>
+        <h4>If only one configuration could be chosen</h4>
+        <p><strong>Gemma-4-26B-A4B NVFP4 on vLLM.</strong> It wins on latency, KV cache and memory
+          footprint, sits only just behind Qwen3.6 on throughput — and is the only one of the three models
+          with both a working prefix cache <em>and</em> high decode speed, without depending on
+          speculative decoding for it.</p>
       </div>
 
-      <h4>Startkonfiguration, die sich über alle Läufe bewährt hat</h4>
+      <h4>Launch configuration that proved itself across all runs</h4>
       <pre>export CUTE_DSL_ARCH=sm_121a
 export PATH=/usr/local/cuda/bin:$PATH
-<span class="hl">export MAX_JOBS=1</span>          <span class="dim"># beim ersten Start; danach Cache warm</span>
+<span class="hl">export MAX_JOBS=1</span>          <span class="dim"># on the first start; cache is warm afterwards</span>
 
-vllm serve &lt;modell&gt; \
+vllm serve &lt;model&gt; \
   --max-num-seqs 32 \
-  <span class="hl">--max-model-len 262144</span> \  <span class="dim"># kostet keinen KV-Cache</span>
+  <span class="hl">--max-model-len 262144</span> \  <span class="dim"># costs no KV cache</span>
   <span class="hl">--gpu-memory-utilization 0.85</span> \
   --host 0.0.0.0 --port 8000</pre>
-      <p>Kein <code>--attention-backend</code> setzen: die Auto-Auswahl trifft auf sm_121
-        <code>flashinfer</code>, weil <code>trtllm_mha</code> SM120 nicht unterstützt und
-        <code>fa3</code> Hopper-exklusiv ist.</p>
+      <p>Do not set <code>--attention-backend</code>: on sm_121 the auto-selection picks
+        <code>flashinfer</code>, because <code>trtllm_mha</code> does not support SM120 and
+        <code>fa3</code> is Hopper-exclusive.</p>
     </section>
 
-    <!-- ============ Methodik ============ -->
+    <!-- ============ Methodology ============ -->
     <section id="methodik">
-      <h2>Methodik</h2>
+      <h2>Methodology</h2>
 
       <dl class="spec">
-        <dt>Hardware</dt><dd>NVIDIA GB10, sm_121a, 121 GB Unified Memory, ~273 GB/s, aarch64</dd>
-        <dt>System</dt><dd>Ubuntu 24.04.4, Kernel 6.17.0-1029-nvidia, Treiber 580.173.02, CUDA 13.0</dd>
-        <dt>Engines</dt><dd>vLLM 0.25.1 und SGLang 0.5.16, beide torch 2.11.0+cu130, native venvs</dd>
+        <dt>Hardware</dt><dd>NVIDIA GB10, sm_121a, 121 GB unified memory, ~273 GB/s, aarch64</dd>
+        <dt>System</dt><dd>Ubuntu 24.04.4, kernel 6.17.0-1029-nvidia, driver 580.173.02, CUDA 13.0</dd>
+        <dt>Engines</dt><dd>vLLM 0.25.1 and SGLang 0.5.16, both torch 2.11.0+cu130, native venvs</dd>
       </dl>
 
-      <h3>Zwei eigene Messskripte, nur Standardbibliothek</h3>
+      <h3>Two purpose-built measurement scripts, standard library only</h3>
       <ul>
-        <li><code>bench.py</code> — 4 Szenarien × 3 Concurrency-Stufen (1, 2, 4) × 3 Wiederholungen.
-          Streaming für die TTFT, <code>ignore_eos</code> für exakte Tokenzahlen,
-          <code>temperature 0</code>, expliziter Aufwärmlauf, Mediane als Ergebnis.</li>
-        <li><code>prefill.py</code> — kaltes Prefill über bis zu 5 Längenstufen. Jeder Request erhält
-          eine eigene UUID im Prompt, sodass weder Automatic Prefix Caching noch RadixAttention greifen
-          kann.</li>
+        <li><code>bench.py</code> — 4 scenarios × 3 concurrency levels (1, 2, 4) × 3 repeats. Streaming
+          for the TTFT, <code>ignore_eos</code> for exact token counts, <code>temperature 0</code>, an
+          explicit warm-up run, medians as the result.</li>
+        <li><code>prefill.py</code> — cold prefill across up to 5 length stages. Every request gets its
+          own UUID in the prompt, so that neither Automatic Prefix Caching nor RadixAttention can take
+          effect.</li>
       </ul>
-      <p>Beide sprechen die OpenAI-kompatible API, die vLLM und SGLang gleichermaßen anbieten — dadurch
-        bekommen alle Konfigurationen exakt dieselben Anfragen.</p>
+      <p>Both speak the OpenAI-compatible API that vLLM and SGLang alike provide — so every configuration
+        receives exactly the same requests.</p>
 
       <div class="note caution">
-        <h4>Zwei Mängel, die erst im Verlauf auffielen</h4>
-        <p><strong>Der Warm-Kalt-Vergleich in <code>bench.py</code> misslang.</strong> Beide
-          Prefill-Szenarien messen den warmen Fall, weil der Präfix schon nach dem ersten der drei
-          Wiederholungsläufe im Cache liegt. Nachträglich behoben durch <code>prefill.py</code>.</p>
-        <p><strong>Die Größenlabels lagen um Faktor zwei daneben.</strong> Die als „8k" bezeichneten
-          Prompts enthielten real 16 000 bis 18 800 Token. In <code>prefill.py</code> wurden die Stufen
-          später nach gemessenen Tokenzahlen benannt.</p>
+        <h4>Two flaws that only surfaced along the way</h4>
+        <p><strong>The warm-cold comparison in <code>bench.py</code> failed.</strong> Both prefill
+          scenarios measure the warm case, because the prefix is already in the cache after the first of
+          the three repeat runs. Fixed after the fact by <code>prefill.py</code>.</p>
+        <p><strong>The size labels were off by a factor of two.</strong> The prompts labelled “8k”
+          actually contained 16,000 to 18,800 tokens. In <code>prefill.py</code> the stages were later
+          named after measured token counts.</p>
       </div>
     </section>
 
-    <!-- ============ Offen ============ -->
+    <!-- ============ Open ============ -->
     <section id="offen">
-      <h2>Offene Fragen</h2>
+      <h2>Open questions</h2>
       <ul>
-        <li><strong>Concurrency über vier Streams.</strong> Gemma-4 INT4 hält dort noch 103 % seiner
-          Einzelstream-Rate, der KV-Cache ließe 14,8 Vollkontext-Requests zu. Das Skalierungspotenzial
-          ist bei keinem Modell ausgereizt.</li>
-        <li><strong>SGLang für Qwen3.6 und Gemma-4.</strong> Der Engine-Vergleich beruht auf einem
-          einzigen Modell; ob sich das Profil überträgt, ist offen.</li>
-        <li><strong>Antwortqualität.</strong> Vollständig ungemessen. Der QAT-Vorteil des
-          Gemma-4-INT4-Checkpoints taucht in keiner Zahl auf, ebenso wenig der Qualitätsunterschied
-          zwischen den Modellen.</li>
-        <li><strong>Reasoning sauber abgetrennt.</strong> Bei Laguna und Qwen3.6 bestand die Ausgabe
-          überwiegend aus Reasoning, wodurch der Code-gegen-Prosa-Vergleich entwertet ist. Nur Gemma-4
-          lieferte echte Antworten.</li>
-        <li><strong>Die 200k-Prefill-Stufe</strong> fehlt bei Gemma-4 in beiden Varianten.</li>
-        <li><strong>Multimodalität.</strong> Alle drei Modelle bringen Vision-Encoder mit, die Speicher
-          belegen und in keinem Test beansprucht wurden.</li>
-        <li><strong>Reproduzierbarkeit über Sitzungen.</strong> Je drei Wiederholungen pro Messpunkt,
-          aber kein Mittel über mehrere Sitzungen. Eine Stichprobe zeigte 1,4 % Abweichung zwischen zwei
-          Läufen derselben Konfiguration.</li>
+        <li><strong>Concurrency beyond four streams.</strong> Gemma-4 INT4 still holds 103 % of its
+          single-stream rate there, and the KV cache would allow 14.8 full-context requests. The scaling
+          potential is exhausted for none of the models.</li>
+        <li><strong>SGLang for Qwen3.6 and Gemma-4.</strong> The engine comparison rests on a single
+          model; whether the profile carries over is open.</li>
+        <li><strong>Answer quality.</strong> Entirely unmeasured. The QAT advantage of the Gemma-4 INT4
+          checkpoint appears in none of these numbers, nor does the quality difference between the
+          models.</li>
+        <li><strong>Reasoning cleanly separated.</strong> With Laguna and Qwen3.6 the output consisted
+          predominantly of reasoning, which devalues the code-versus-prose comparison. Only Gemma-4
+          produced genuine answers.</li>
+        <li><strong>The 200k prefill stage</strong> is missing for Gemma-4 in both variants.</li>
+        <li><strong>Multimodality.</strong> All three models ship vision encoders that occupy memory and
+          were exercised in no test.</li>
+        <li><strong>Reproducibility across sessions.</strong> Three repeats per measurement point, but no
+          averaging across sessions. A spot check showed 1.4 % deviation between two runs of the same
+          configuration.</li>
       </ul>
     </section>
 
-    <!-- ============ Glossar ============ -->
+    <!-- ============ Glossary ============ -->
     <section id="glossar">
-      <h2>Glossar</h2>
+      <h2>Glossary</h2>
       <dl class="glossary">
         <div class="term">
-          <dt>Aktive Parameter (A3B, A4B)</dt>
-          <dd>Bei Mixture-of-Experts-Modellen die Zahl der pro Token tatsächlich ausgewerteten Parameter.
-            Bestimmt das Decode-Tempo; die Gesamtparameterzahl bestimmt den Speicherbedarf.</dd>
+          <dt>Active parameters (A3B, A4B)</dt>
+          <dd>In mixture-of-experts models, the number of parameters actually evaluated per token.
+            Determines decode speed; the total parameter count determines the memory footprint.</dd>
         </div>
         <div class="term">
-          <dt>KV-Cache</dt>
-          <dd>Zwischenspeicher der Key- und Value-Tensoren verarbeiteter Token. Seine Größe begrenzt, wie
-            viele Requests mit welcher Kontextlänge gleichzeitig laufen.</dd>
+          <dt>KV cache</dt>
+          <dd>Cache of the key and value tensors of processed tokens. Its size limits how many requests at
+            what context length run concurrently.</dd>
         </div>
         <div class="term">
-          <dt>Präfix-Cache</dt>
-          <dd>Wiederverwendung der KV-Tensoren eines bereits verarbeiteten Prompt-Anfangs. Bei vLLM
-            Automatic Prefix Caching, bei SGLang RadixAttention.</dd>
+          <dt>Prefix cache</dt>
+          <dd>Reuse of the KV tensors of an already-processed prompt prefix. Automatic Prefix Caching in
+            vLLM, RadixAttention in SGLang.</dd>
         </div>
         <div class="term">
-          <dt>Sliding-Window-Attention</dt>
-          <dd>Attention über ein begrenztes Fenster zurückliegender Token. Dämpft den quadratischen
-            Aufwand und bleibt dabei cachebar.</dd>
+          <dt>Sliding-window attention</dt>
+          <dd>Attention over a bounded window of preceding tokens. Dampens the quadratic cost while
+            remaining cacheable.</dd>
         </div>
         <div class="term">
-          <dt>Lineare Attention</dt>
-          <dd>Attention mit sequenziell fortgeschriebenem Zustand konstanter Größe. Spart Speicher,
-            verhindert aber die stückweise Wiederverwendung eines Präfix.</dd>
+          <dt>Linear attention</dt>
+          <dd>Attention with a sequentially updated state of constant size. Saves memory, but prevents
+            piecewise reuse of a prefix.</dd>
         </div>
         <div class="term">
           <dt>NVFP4</dt>
-          <dd>NVIDIAs Microscaling-Format: FP4-Werte im E2M1-Layout mit FP8-Blockskalen. Blackwell-Tensor-Cores
-            verarbeiten es nativ über <code>FLASHINFER_CUTLASS</code>.</dd>
+          <dd>NVIDIA's microscaling format: FP4 values in E2M1 layout with FP8 block scales. Blackwell
+            tensor cores process it natively via <code>FLASHINFER_CUTLASS</code>.</dd>
         </div>
         <div class="term">
           <dt>MARLIN</dt>
-          <dd>CUDA-Kernel für gewichtsquantisierte Formate mit unquantisierten Aktivierungen. Entpackt
-            4-Bit-Gewichte und multipliziert in höherer Präzision; amortisiert sich über größere Batches.</dd>
+          <dd>CUDA kernel for weight-quantized formats with unquantized activations. Unpacks 4-bit weights
+            and multiplies at higher precision; amortises over larger batches.</dd>
         </div>
         <div class="term">
-          <dt>Spekulative Dekodierung</dt>
-          <dd>Ein günstiges Verfahren schlägt mehrere Token vor, das Hauptmodell verifiziert sie parallel.
-            Varianten hier: DFlash (eigenes Draft-Modell), MTP (mitgelieferter Kopf).</dd>
+          <dt>Speculative decoding</dt>
+          <dd>A cheap method proposes several tokens, which the main model verifies in parallel. The
+            variants here: DFlash (a dedicated draft model), MTP (a bundled head).</dd>
         </div>
         <div class="term">
           <dt>TTFT</dt>
-          <dd>Time To First Token. Bestimmt die gefühlte Reaktionszeit; bei langen Prompts vom Prefill
-            dominiert, bei kurzen vom Scheduling.</dd>
+          <dd>Time to first token. Determines perceived responsiveness; dominated by prefill for long
+            prompts and by scheduling for short ones.</dd>
         </div>
         <div class="term">
-          <dt>Unified Memory</dt>
-          <dd>Auf GB10 teilen sich CPU und GPU einen physischen Speicherpool. Gewichte, KV-Cache,
-            Betriebssystem und Compilerprozesse konkurrieren um dieselben 121 GB.</dd>
+          <dt>Unified memory</dt>
+          <dd>On GB10, CPU and GPU share one physical memory pool. Weights, KV cache, operating system and
+            compiler processes compete for the same 121 GB.</dd>
         </div>
         <div class="term">
           <dt>sm_121a</dt>
-          <dd>Compute Capability 12.1 der GB10-GPU. Kernel müssen dafür übersetzt sein; der Gencode
-            entsteht nur bei CUDA ≥ 13.0 auf aarch64.</dd>
+          <dd>Compute capability 12.1 of the GB10 GPU. Kernels must be compiled for it; the gencode is
+            emitted only for CUDA ≥ 13.0 on aarch64.</dd>
         </div>
         <div class="term">
           <dt>cicc</dt>
-          <dd>Compiler-Frontend der CUDA-Toolchain. Belegte bis zu 7,5 GB je Prozess und war Auslöser des
-            OOM-Kills beim ersten Laguna-Start.</dd>
+          <dd>Compiler frontend of the CUDA toolchain. Occupied up to 7.5 GB per process and triggered the
+            OOM kill on the first Laguna start.</dd>
         </div>
       </dl>
     </section>
 
-    <!-- ============ Quellen ============ -->
+    <!-- ============ Sources ============ -->
     <section id="quellen">
-      <h2>Einzelprotokolle</h2>
+      <h2>Individual reports</h2>
 
-      <p>Diese Synthese fasst drei ausführliche Testprotokolle zusammen. Dort finden sich die
-        vollständigen Verläufe, Logauszüge und Detailbefunde.</p>
+      <p>This synthesis summarises three detailed test reports. They contain the full timelines, log
+        excerpts and detailed findings.</p>
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Teil</th><th>Inhalt</th><th>Datei</th></tr></thead>
+          <thead><tr><th>Part</th><th>Content</th><th>File</th></tr></thead>
           <tbody>
-            <tr><td class="rowlab">1</td><td>Laguna-S-2.1 — vLLM gegen SGLang, 10 Startversuche, 2 OOM-Kills, 4 Fehldiagnosen</td><td><code>01-laguna-s-2.1.html</code></td></tr>
-            <tr><td class="rowlab">2</td><td>Qwen3.6-35B-A3B — dreifaches Decode-Tempo, fehlender Präfix-Cache</td><td><code>02-qwen3.6-35b-a3b.html</code></td></tr>
-            <tr><td class="rowlab">3</td><td>Gemma-4-26B-A4B — NVFP4 gegen INT4, dokumentierte Kernel-Pfade</td><td><code>03-gemma-4-26b-a4b.html</code></td></tr>
-            <tr><td class="rowlab">4</td><td>Diese Synthese</td><td><code>04-gesamtsynthese.html</code></td></tr>
+            <tr><td class="rowlab">1</td><td>Laguna-S-2.1 — vLLM against SGLang, 10 start attempts, 2 OOM kills, 4 misdiagnoses</td><td><code>01-laguna-s-2.1.html</code></td></tr>
+            <tr><td class="rowlab">2</td><td>Qwen3.6-35B-A3B — three times the decode speed, missing prefix cache</td><td><code>02-qwen3.6-35b-a3b.html</code></td></tr>
+            <tr><td class="rowlab">3</td><td>Gemma-4-26B-A4B — NVFP4 against INT4, documented kernel paths</td><td><code>03-gemma-4-26b-a4b.html</code></td></tr>
+            <tr><td class="rowlab">4</td><td>This synthesis</td><td><code>04-gesamtsynthese.html</code></td></tr>
           </tbody>
         </table>
       </div>
 
-      <h4>Werkzeuge und Rohdaten</h4>
+      <h4>Tools and raw data</h4>
       <dl class="spec">
-        <dt>bench.py</dt><dd>Durchsatz und TTFT über 4 Szenarien × 3 Concurrency-Stufen</dd>
-        <dt>prefill.py</dt><dd>Kaltes Prefill mit einmaligem UUID-Präfix je Request</dd>
-        <dt>start-vllm-*.sh</dt><dd>Startskripte je Modell und Variante</dd>
-        <dt>start-sglang-*.sh</dt><dd>SGLang-Startskripte</dd>
-        <dt>ergebnisse_*.json</dt><dd>6 Messreihen à 12 Punkte</dd>
-        <dt>prefill_*.json</dt><dd>6 Prefill-Reihen</dd>
-        <dt>*.log</dt><dd>Startprotokolle aller 14 Versuche, auch der gescheiterten</dd>
+        <dt>bench.py</dt><dd>Throughput and TTFT across 4 scenarios × 3 concurrency levels</dd>
+        <dt>prefill.py</dt><dd>Cold prefill with a unique UUID prefix per request</dd>
+        <dt>start-vllm-*.sh</dt><dd>Launch scripts per model and variant</dd>
+        <dt>start-sglang-*.sh</dt><dd>SGLang launch scripts</dd>
+        <dt>ergebnisse_*.json</dt><dd>6 measurement series of 12 points each</dd>
+        <dt>prefill_*.json</dt><dd>6 prefill series</dd>
+        <dt>*.log</dt><dd>startup logs of all 14 attempts, including the failed ones</dd>
       </dl>
-      <p>Alles in <code>~/bench/</code>.</p>
+      <p>Everything in <code>~/bench/</code>.</p>
     </section>
 
   </main>
 
   <footer>
-    Gesamtsynthese · 6 Serverkonfigurationen, 3 Modelle, 2 Engines, 2 Quantisierungsformate ·
-    72 Durchsatz- und Latenzmesspunkte, 22 Prefill-Stufen, 14 Serverstarts ·
-    alle Werte gemessen, Hochrechnungen ausdrücklich gekennzeichnet.
+    Overall synthesis · 6 server configurations, 3 models, 2 engines, 2 quantization formats ·
+    72 throughput and latency measurement points, 22 prefill stages, 14 server starts ·
+    all values measured, extrapolations expressly marked.
   </footer>
 
 </div>

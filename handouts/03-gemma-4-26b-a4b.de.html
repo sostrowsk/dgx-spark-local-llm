@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gemma-4-26B-A4B auf DGX Spark — NVFP4 gegen INT4</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground: #F6F8F8;
+    --paper: #FFFFFF;
+    --ink: #0F1A1C;
+    --muted: #546366;
+    --rule: #D9E1E2;
+    --accent: #1A5E63;
+    --accent-wash: #E4EFEF;
+    --ok: #1F7A4D;
+    --ok-wash: #E6F2EB;
+    --fail: #B3261E;
+    --fail-wash: #FAEAE9;
+    --warn: #8A5A00;
+    --warn-wash: #FAF1DF;
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --s1: 0.25rem; --s2: 0.5rem; --s3: 0.75rem; --s4: 1rem;
+    --s5: 1.5rem; --s6: 2rem; --s7: 3rem; --s8: 4.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px; margin: 0 auto; padding: var(--s6) var(--s5) var(--s8);
+    display: grid; grid-template-columns: 1fr; gap: var(--s6);
+  }
+  @media (min-width: 1000px) {
+    .wrap { grid-template-columns: 230px minmax(0, 1fr); gap: var(--s7); align-items: start; }
+    .toc { position: sticky; top: var(--s5); }
+  }
+
+  .masthead { grid-column: 1 / -1; border-bottom: 3px solid var(--ink); padding-bottom: var(--s5); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 var(--s3);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(1.9rem, 4.4vw, 3rem);
+    line-height: 1.12; margin: 0 0 var(--s3); text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.02rem, 1.9vw, 1.22rem);
+    color: var(--muted); margin: 0; max-width: 62ch; line-height: 1.5;
+  }
+  .meta {
+    margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .toc nav { border-left: 2px solid var(--rule); padding-left: var(--s4); }
+  .toc h2 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 var(--s3); font-weight: 600;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; display: flex; flex-direction: column; gap: 2px; }
+  .toc li { counter-increment: toc; }
+  .toc a { display: block; padding: 4px 0; color: var(--muted); text-decoration: none; font-size: 0.85rem; line-height: 1.35; }
+  .toc a::before { content: counter(toc) "."; font-family: var(--mono); font-size: 0.72rem; color: var(--accent); margin-right: 6px; }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: var(--s7); }
+  section { scroll-margin-top: var(--s5); }
+  h2 {
+    font-family: var(--serif); font-size: clamp(1.35rem, 2.7vw, 1.85rem); font-weight: 600;
+    margin: 0 0 var(--s4); line-height: 1.2; text-wrap: balance;
+    padding-bottom: var(--s2); border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-family: var(--sans); font-size: 1.02rem; font-weight: 650; margin: var(--s5) 0 var(--s3); }
+  h4 {
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: var(--s4) 0 var(--s2); font-weight: 600;
+  }
+  p { margin: 0 0 var(--s4); max-width: 72ch; }
+  main ul, main ol { max-width: 72ch; margin: 0 0 var(--s4); padding-left: var(--s5); }
+  main li { margin-bottom: var(--s2); }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--accent-wash);
+    padding: 1px 5px; border-radius: 3px; color: var(--accent);
+  }
+
+  .tldr { background: var(--ink); color: #EAF0F0; border-radius: 4px; padding: var(--s5) var(--s5) var(--s4); }
+  .tldr h2 { color: #FFF; border-bottom-color: rgba(255,255,255,0.22); }
+  .tldr p { color: #C3D0D1; }
+  .tldr code { background: rgba(255,255,255,0.12); color: #9FD8D6; }
+  .tldr-grid { display: grid; gap: var(--s4); grid-template-columns: 1fr; margin-top: var(--s4); }
+  @media (min-width: 640px) { .tldr-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tldr-item { border-top: 2px solid var(--accent); padding-top: var(--s3); }
+  .tldr-item h3 { margin: 0 0 var(--s2); color: #FFF; font-size: 0.95rem; }
+  .tldr-item p { margin: 0; font-size: 0.9rem; line-height: 1.55; }
+
+  .headline-figs { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: var(--s5) 0 0; }
+  .fig { background: rgba(255,255,255,0.07); border-radius: 3px; padding: var(--s3) var(--s4); }
+  .fig .n {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 600; color: #7FCFCB;
+    display: block; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .fig .l { font-size: 0.76rem; color: #B4C3C4; display: block; margin-top: 4px; line-height: 1.35; }
+
+  .scroller { overflow-x: auto; margin: 0 0 var(--s4); border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  caption {
+    caption-side: top; text-align: left; font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: var(--s3) var(--s4) var(--s2);
+  }
+  th, td { padding: 7px var(--s3); text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); background: var(--ground);
+    position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.best { font-weight: 700; color: var(--accent); }
+  td.worse { color: var(--fail); }
+  .rowlab { font-weight: 600; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 100px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-wash); color: var(--ok); }
+  .pill.fail { background: var(--fail-wash); color: var(--fail); }
+  .pill.warn { background: var(--warn-wash); color: var(--warn); }
+
+  pre {
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.55; background: var(--ink);
+    color: #D5E0E1; padding: var(--s3) var(--s4); border-radius: 3px; overflow-x: auto; margin: 0 0 var(--s4);
+  }
+  pre .hl { color: #F0A9A2; }
+  pre .dim { color: #7E8F90; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    padding: var(--s3) var(--s4); margin: 0 0 var(--s4); border-radius: 0 3px 3px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.caution { border-left-color: var(--warn); background: var(--warn-wash); }
+  .note h4 { margin-top: 0; color: inherit; }
+
+  details.deep { border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); margin: 0 0 var(--s4); }
+  details.deep > summary {
+    padding: var(--s3) var(--s4); cursor: pointer; font-family: var(--mono);
+    font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  details.deep > summary:hover { background: var(--accent-wash); }
+  details.deep > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  details.deep[open] > summary { border-bottom: 1px solid var(--rule); }
+  .deep-body { padding: var(--s4); }
+  .deep-body > :last-child { margin-bottom: 0; }
+  .deep-body .scroller, .deep-body pre { margin-bottom: var(--s3); }
+
+  dl.spec { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: 0 0 var(--s4); font-size: 0.9rem; }
+  dl.spec dt { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+  dl.spec dd { margin: 0; }
+
+  .glossary { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; } }
+  .term { border-top: 2px solid var(--rule); padding-top: var(--s3); }
+  .term dt { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: var(--s1); }
+  .term dd { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: var(--s4); margin-top: var(--s5);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Testprotokoll · Inferenz-Benchmark · Teil 3</p>
+    <h1>Gemma-4-26B-A4B auf DGX Spark GB10</h1>
+    <p class="standfirst">NVFP4 gegen INT4 unter Bedingungen, die erstmals fast ausschließlich den
+      Kernel-Pfad messen — gleiches Modell, gleiche Engine, praktisch gleicher Speicher. Das Ergebnis
+      hängt von der Last ab.</p>
+    <div class="meta">
+      <span><b>Hardware</b> NVIDIA GB10 · sm_121a · 121 GB Unified Memory</span>
+      <span><b>Modell</b> Gemma-4-26B-A4B · 26B MoE, 4B aktiv</span>
+      <span><b>Engine</b> vLLM 0.25.1</span>
+      <span><b>Läufe</b> 2 Konfigurationen · beide beim ersten Versuch erfolgreich</span>
+    </div>
+  </header>
+
+  <aside class="toc">
+    <nav aria-label="Inhaltsübersicht">
+      <h2>Inhalt</h2>
+      <ol>
+        <li><a href="#tldr">Auf einen Blick</a></li>
+        <li><a href="#kern">Kernaussagen</a></li>
+        <li><a href="#modell">Modell und Varianten</a></li>
+        <li><a href="#aufbau">Testaufbau</a></li>
+        <li><a href="#start">Startverlauf</a></li>
+        <li><a href="#kernel">Die zwei Kernel-Pfade</a></li>
+        <li><a href="#decode">Decode-Durchsatz</a></li>
+        <li><a href="#latenz">Antwortlatenz</a></li>
+        <li><a href="#prefill">Prefill</a></li>
+        <li><a href="#speicher">Speicher</a></li>
+        <li><a href="#fallstricke">Fallstricke</a></li>
+        <li><a href="#serie">Einordnung in die Testreihe</a></li>
+        <li><a href="#empfehlung">Empfehlung</a></li>
+        <li><a href="#limits">Limitationen</a></li>
+        <li><a href="#glossar">Glossar</a></li>
+        <li><a href="#artefakte">Artefakte</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ================= TL;DR ================= -->
+    <section id="tldr" class="tldr">
+      <h2>Auf einen Blick</h2>
+      <p>Zwei Varianten desselben Modells, deren Gewichte sich um 0,75 GiB und deren KV-Cache sich um
+        1 % unterscheiden. Was übrig bleibt, ist der Unterschied zwischen zwei CUDA-Kernel-Pfaden auf
+        sm_121 — und der kehrt sich mit steigender Last um.</p>
+
+      <div class="tldr-grid">
+        <div class="tldr-item">
+          <h3>NVFP4 führt bei niedriger Last</h3>
+          <p>Bei einem einzelnen Stream 17 % schneller, beim kalten Prefill kurzer Prompts sogar 28 %.
+            Dort spielt der native FP4-Pfad seinen Vorteil aus.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>INT4 zieht bei vier Streams gleich</h3>
+          <p>Marlin liefert konstante 44–47 tok/s je Stream über alle Laststufen, während NVFP4 von
+            53,5 auf 43,2 abfällt. Bei c=4 liegt INT4 im Prosa-Szenario 4 % vorn.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>Beste Latenz der ganzen Reihe</h3>
+          <p>0,036 s bis zum ersten Token — ein Achtel von Laguna, weniger als die Hälfte von Qwen3.6.</p>
+        </div>
+        <div class="tldr-item">
+          <h3>Präfix-Cache funktioniert</h3>
+          <p>16k Token in 0,093 s warm gegen 3,13 s kalt, also Faktor 34. Die Gegenprobe zu Qwen3.6,
+            wo der Effekt vollständig ausblieb.</p>
+        </div>
+      </div>
+
+      <div class="headline-figs">
+        <div class="fig"><span class="n">177,1</span><span class="l">tok/s Spitze<br>INT4, Prosa, c=4</span></div>
+        <div class="fig"><span class="n">0,036</span><span class="l">Sekunden TTFT<br>Bestwert der Reihe</span></div>
+        <div class="fig"><span class="n">3 912 140</span><span class="l">Token KV-Cache<br>Bestwert der Reihe</span></div>
+        <div class="fig"><span class="n">7161</span><span class="l">tok/s kaltes Prefill<br>NVFP4 bei 4k</span></div>
+      </div>
+    </section>
+
+    <!-- ================= Kernaussagen ================= -->
+    <section id="kern">
+      <h2>Kernaussagen</h2>
+
+      <h3>1. Der Formatvorteil ist lastabhängig, nicht absolut</h3>
+      <p>NVFP4 gewinnt bei einem Stream um 17 %, bei zwei um 6 %, und bei vier Streams liegt INT4 im
+        Prosa-Szenario 4 % vorn. Die verbreitete Aussage „NVFP4 ist auf Blackwell nativ und daher
+        schneller" gilt also nur für den Teillastbereich.</p>
+
+      <h3>2. Marlin skaliert über den Batch, FlashInfer-CUTLASS nicht</h3>
+      <p>Die Decode-Rate je Stream zeigt zwei unterschiedliche Charakteristiken: INT4 bleibt über alle
+        Laststufen bei 44–47 tok/s, NVFP4 startet bei 53,5 und fällt auf 43,2. Der FlashInfer-Pfad
+        arbeitet schon bei einem Stream nahe seinem Optimum und hat entsprechend weniger Reserve.</p>
+
+      <h3>3. Beim Prefill bleibt NVFP4 klar vorn — mit schrumpfendem Abstand</h3>
+      <p>28 % Vorsprung bei 4k Token, 22 % bei 16k, 12 % bei 65k, 6 % bei 132k. Je rechenintensiver und
+        kürzer, desto wertvoller der native FP4-Pfad.</p>
+
+      <h3>4. Sliding-Window-Attention lässt sich cachen, lineare Attention nicht</h3>
+      <p>Gemma-4 zeigt den Präfix-Cache-Effekt mit Faktor 34, den Qwen3.6 im vorigen Test vermissen
+        ließ. Beide Modelle dämpfen den quadratischen Attention-Anteil, aber nur der Sliding-Window-Ansatz
+        erlaubt die Wiederverwendung — die im Qwen-Test aufgestellte Hypothese wird damit gestützt.</p>
+
+      <h3>5. Erstmals ein aussagekräftiger Code-gegen-Prosa-Vergleich</h3>
+      <p>Gemma-4 arbeitet ohne Reasoning-Modus und liefert echte Antworten. Ergebnis: 53,1 gegen
+        53,0 tok/s — praktisch identisch. Ohne spekulative Dekodierung ist der Decode rein
+        bandbreitengetrieben und vom Inhalt unabhängig. Bei Laguna und Qwen3.6 war dieser Vergleich
+        durch den Reasoning-Anteil entwertet.</p>
+    </section>
+
+    <!-- ================= Modell ================= -->
+    <section id="modell">
+      <h2>Modell und Varianten</h2>
+
+      <h3>Architektur</h3>
+      <dl class="spec">
+        <dt>Architektur</dt><dd><code>Gemma4ForConditionalGeneration</code> — multimodal, mit <code>vision_config</code></dd>
+        <dt>Parameter</dt><dd>26 Mrd. gesamt, 4 Mrd. aktiv pro Token</dd>
+        <dt>Experten</dt><dd>128</dd>
+        <dt>Layer</dt><dd>30 — Muster 5 × <code>sliding_attention</code> zu 1 × <code>full_attention</code></dd>
+        <dt>Sliding Window</dt><dd>1024</dd>
+        <dt>Kontext</dt><dd><code>max_position_embeddings</code> 262 144</dd>
+        <dt>MTP</dt><dd>in keinem der geprüften Checkpoints enthalten</dd>
+      </dl>
+
+      <h3>Vermessene Varianten</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Rolle</th><th>Repo</th><th class="num">Größe</th><th>Format</th><th>Kernel-Pfad</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">NVFP4</td><td><code>RedHatAI/gemma-4-26B-A4B-it-NVFP4</code></td><td class="num">16,5 GB</td><td>compressed-tensors</td><td><code>FLASHINFER_CUTLASS</code></td></tr>
+            <tr><td class="rowlab">INT4</td><td><code>cyankiwi/gemma-4-26B-A4B-it-qat-AWQ-INT4</code></td><td class="num">17,2 GB</td><td>compressed-tensors, QAT</td><td><code>MARLIN</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Beide im selben Container-Format, damit vLLM sie identisch behandelt und sich ausschließlich das
+        Zahlenformat unterscheidet. Das INT4 ist ein <strong>QAT</strong>-Checkpoint, also
+        quantisierungsbewusst nachtrainiert — ein Qualitätsvorteil, den diese Geschwindigkeitsmessung
+        nicht sichtbar macht.</p>
+
+      <h3>Weitere verfügbare Varianten</h3>
+      <div class="scroller">
+        <table>
+          <caption>Größen über die HuggingFace-API gemessen, GGUF und MLX ausgelassen</caption>
+          <thead><tr><th>Repo</th><th class="num">Größe</th><th>Format</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Intel/…-int4-AutoRound</td><td class="num">15,4 GB</td><td>auto-round</td></tr>
+            <tr><td class="rowlab">Intel/…-int4-mixed-AutoRound</td><td class="num">16,2 GB</td><td>auto-round</td></tr>
+            <tr><td class="rowlab">RedHatAI/…-NVFP4</td><td class="num">16,5 GB</td><td>compressed-tensors</td></tr>
+            <tr><td class="rowlab">unsloth/…-NVFP4</td><td class="num">16,9 GB</td><td>compressed-tensors</td></tr>
+            <tr><td class="rowlab">cyankiwi/…-AWQ-4bit</td><td class="num">17,2 GB</td><td>compressed-tensors</td></tr>
+            <tr><td class="rowlab">cyankiwi/…-qat-AWQ-INT4</td><td class="num">17,2 GB</td><td>compressed-tensors, QAT</td></tr>
+            <tr><td class="rowlab">nvidia/Gemma-4-26B-A4B-NVFP4</td><td class="num">18,8 GB</td><td>modelopt</td></tr>
+            <tr><td class="rowlab">RedHatAI/…-FP8-dynamic</td><td class="num">28,7 GB</td><td>compressed-tensors</td></tr>
+            <tr><td class="rowlab">google/gemma-4-26B-A4B-it</td><td class="num">51,6 GB</td><td>BF16</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Alle Repos sind frei zugänglich, kein Gating — bei Google-Modellen keine Selbstverständlichkeit.</p>
+    </section>
+
+    <!-- ================= Aufbau ================= -->
+    <section id="aufbau">
+      <h2>Testaufbau</h2>
+
+      <p>Hardware, Engine und Messmethodik identisch zu den Laguna- und Qwen3.6-Tests. Beide Varianten
+        über dasselbe Startskript mit Variantenargument, sodass abweichende Parameter ausgeschlossen sind.</p>
+
+      <pre>#!/usr/bin/env bash
+VARIANTE="${1:-nvfp4}"
+case "$VARIANTE" in
+  nvfp4) MODELL="RedHatAI/gemma-4-26B-A4B-it-NVFP4" ;;
+  int4)  MODELL="cyankiwi/gemma-4-26B-A4B-it-qat-AWQ-INT4" ;;
+esac
+
+export CUTE_DSL_ARCH=sm_121a
+export MAX_JOBS=1
+
+exec vllm serve "$MODELL" \
+  --max-num-seqs 32 \
+  --max-model-len 262144 \
+  --gpu-memory-utilization 0.85 \
+  --host 0.0.0.0 --port 8000</pre>
+
+      <p>Kein <code>--speculative-config</code>: die Checkpoints bringen keinen MTP-Kopf mit. Gemma-4
+        misst damit die reine Decode-Leistung ohne spekulativen Multiplikator, den Laguna (DFlash) und
+        Qwen3.6 (MTP) beide hatten.</p>
+
+      <h4>Messwerkzeuge</h4>
+      <ul>
+        <li><code>bench.py</code> — 4 Szenarien × 3 Concurrency-Stufen × 3 Wiederholungen, Streaming für
+          die TTFT, <code>ignore_eos</code>, <code>temperature 0</code>, Aufwärmlauf vorab, Mediane</li>
+        <li><code>prefill.py</code> — kaltes Prefill mit einmaligem UUID-Präfix je Request</li>
+      </ul>
+    </section>
+
+    <!-- ================= Start ================= -->
+    <section id="start">
+      <h2>Startverlauf</h2>
+
+      <p>Beide Läufe gelangen beim ersten Versuch. Die aus den Laguna-Tests erarbeiteten Einstellungen
+        trugen unverändert.</p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Kennzahl</th><th class="num">NVFP4</th><th class="num">INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Gewichte</td><td class="num">15,88 GiB</td><td class="num">16,63 GiB</td></tr>
+            <tr><td class="rowlab">Ladezeit</td><td class="num">101,9 s</td><td class="num">39,2 s</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num">3 912 140</td><td class="num">3 875 400</td></tr>
+            <tr><td class="rowlab">Concurrency bei 262k</td><td class="num">14,92×</td><td class="num">14,78×</td></tr>
+            <tr><td class="rowlab">MoE-Backend</td><td class="num">FLASHINFER_CUTLASS</td><td class="num">MARLIN</td></tr>
+            <tr><td class="rowlab">Ergebnis</td><td class="num"><span class="pill ok">erfolgreich</span></td><td class="num"><span class="pill ok">erfolgreich</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note caution">
+        <p>Die Ladezeiten sind <strong>nicht vergleichbar</strong>: der INT4-Lauf folgte unmittelbar auf
+          den NVFP4-Lauf, sodass der Seitencache des Betriebssystems warm war. Die 39,2 s messen also
+          Cache-Wärme, nicht Modelleigenschaften.</p>
+      </div>
+    </section>
+
+    <!-- ================= Kernel ================= -->
+    <section id="kernel">
+      <h2>Die zwei Kernel-Pfade</h2>
+
+      <p>vLLM protokolliert beim Start, welchen MoE-Backend es wählt. Damit ist der Unterschied, der
+        diesem Vergleich zugrunde liegt, direkt belegt statt aus der Literatur zitiert.</p>
+
+      <pre><span class="dim">NVFP4:</span> INFO [nvfp4.py:285] Using '<span class="hl">FLASHINFER_CUTLASS</span>' NvFp4 MoE backend
+<span class="dim">INT4: </span> INFO [int_wna16.py:197] Using '<span class="hl">MARLIN</span>' WNA16 MoE backend</pre>
+
+      <h3>Was die beiden Pfade unterscheidet</h3>
+      <p><strong>FLASHINFER_CUTLASS</strong> nutzt die FP4-Tensor-Cores der Blackwell-Generation direkt.
+        Die Gewichte liegen im E2M1-Layout mit FP8-Blockskalen vor und werden ohne Zwischenschritt
+        verrechnet.</p>
+      <p><strong>MARLIN</strong> ist ein Kernel für gewichtsquantisierte Formate mit unquantisierten
+        Aktivierungen (WNA16). Die 4-Bit-Gewichte werden entpackt und in höherer Präzision multipliziert.
+        Der Mehraufwand amortisiert sich über größere Batches — genau das zeigt die Messung.</p>
+
+      <h3>Der Effekt in Zahlen</h3>
+      <div class="scroller">
+        <table>
+          <caption>Decode-Rate je einzelnem Stream, Prosa-Szenario</caption>
+          <thead><tr><th class="num">Concurrency</th><th class="num">NVFP4</th><th class="num">INT4</th><th>Charakteristik</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="num best">53,5</td><td class="num">44,1</td><td>NVFP4 nahe Optimum</td></tr>
+            <tr><td class="num">2</td><td class="num best">50,9</td><td class="num">46,7</td><td>INT4 gewinnt durch Batching</td></tr>
+            <tr><td class="num">4</td><td class="num">43,2</td><td class="num best">45,5</td><td>INT4 überholt</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>INT4 bleibt über den gesamten Lastbereich in einem Band von 3 tok/s, NVFP4 verliert 19 %. Die
+        Marlin-Kernel holen sich ihren Anfangsnachteil über den Batch zurück.</p>
+    </section>
+
+    <!-- ================= Decode ================= -->
+    <section id="decode">
+      <h2>Decode-Durchsatz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Gesamtdurchsatz in tok/s über alle gleichzeitigen Requests · Median aus 3 Läufen</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">NVFP4</th><th class="num">INT4</th><th class="num">Delta</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num best">53,0</td><td class="num">43,9</td><td class="num">−17 %</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num best">101,0</td><td class="num">94,9</td><td class="num">−6 %</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">170,6</td><td class="num best">177,1</td><td class="num">+4 %</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num best">53,1</td><td class="num">44,1</td><td class="num">−17 %</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num best">101,5</td><td class="num">95,0</td><td class="num">−6 %</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num best">173,6</td><td class="num">172,5</td><td class="num">−1 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num best">27,6</td><td class="num">22,8</td><td class="num">−18 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num best">82,3</td><td class="num">75,9</td><td class="num">−8 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num best">142,5</td><td class="num">140,0</td><td class="num">−2 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">1</td><td class="num best">44,8</td><td class="num">38,3</td><td class="num">−15 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">2</td><td class="num best">85,5</td><td class="num">77,8</td><td class="num">−9 %</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">4</td><td class="num best">141,1</td><td class="num">136,2</td><td class="num">−3 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Über alle vier Szenarien dasselbe Muster: bei c=1 liegt NVFP4 15–18 % vorn, bei c=2 noch 6–9 %,
+        bei c=4 ist der Abstand auf −1 bis +4 % geschrumpft.</p>
+
+      <h3>Skalierungsverhalten</h3>
+      <div class="scroller">
+        <table>
+          <caption>Prosa-Szenario · wie viel der Einzelstream-Rate bei höherer Last erhalten bleibt</caption>
+          <thead><tr><th class="num">c</th><th class="num">NVFP4 erhalten</th><th class="num">INT4 erhalten</th><th class="num">NVFP4 gesamt</th><th class="num">INT4 gesamt</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">53,0</td><td class="num">43,9</td></tr>
+            <tr><td class="num">2</td><td class="num">95 %</td><td class="num best">106 %</td><td class="num">101,0</td><td class="num">94,9</td></tr>
+            <tr><td class="num">4</td><td class="num">81 %</td><td class="num best">103 %</td><td class="num">170,6</td><td class="num">177,1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>INT4 wird bei zwei und vier Streams pro Stream sogar <em>schneller</em> als bei einem — ein
+        klares Batching-Signal der Marlin-Kernel.</p>
+    </section>
+
+    <!-- ================= Latenz ================= -->
+    <section id="latenz">
+      <h2>Antwortlatenz</h2>
+
+      <div class="scroller">
+        <table>
+          <caption>Zeit bis zum ersten Token in Sekunden · Median</caption>
+          <thead><tr><th>Szenario</th><th class="num">c</th><th class="num">NVFP4</th><th class="num">INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Prosa</td><td class="num">1</td><td class="num best">0,036</td><td class="num">0,038</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">2</td><td class="num best">0,036</td><td class="num">0,037</td></tr>
+            <tr><td class="rowlab">Prosa</td><td class="num">4</td><td class="num">0,069</td><td class="num best">0,064</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">1</td><td class="num">0,042</td><td class="num">0,042</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">2</td><td class="num">0,045</td><td class="num best">0,044</td></tr>
+            <tr><td class="rowlab">Code</td><td class="num">4</td><td class="num">0,078</td><td class="num best">0,076</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">1</td><td class="num">0,093</td><td class="num best">0,084</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">2</td><td class="num best">0,112</td><td class="num">0,114</td></tr>
+            <tr><td class="rowlab">Prefill 16k</td><td class="num">4</td><td class="num best">0,153</td><td class="num">0,180</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">1</td><td class="num best">0,077</td><td class="num">0,078</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">2</td><td class="num best">0,097</td><td class="num">0,098</td></tr>
+            <tr><td class="rowlab">Prefill 16k wdh.</td><td class="num">4</td><td class="num">0,142</td><td class="num best">0,128</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Die TTFT unterscheidet sich zwischen den Formaten praktisch nicht — der Kernel-Pfad wirkt auf
+        den Durchsatz, nicht auf die Anlaufzeit. Bemerkenswert ist das absolute Niveau:
+        <strong>0,036 s</strong> ist der beste Wert der gesamten Testreihe, gegenüber 0,094 s bei
+        Qwen3.6 und 0,276 s bei Laguna.</p>
+    </section>
+
+    <!-- ================= Prefill ================= -->
+    <section id="prefill">
+      <h2>Prefill</h2>
+
+      <h3>Der Präfix-Cache funktioniert</h3>
+      <p>Anders als bei Qwen3.6 greift die Wiederverwendung: 16 386 Token brauchen kalt
+        <strong>3,13 s</strong>, im Hauptlauf mit warmem Cache <strong>0,093 s</strong> —
+        <strong>Faktor 34</strong>. Das stützt die im Qwen-Test aufgestellte Hypothese, dass
+        Sliding-Window-Attention cachebar ist und lineare Attention nicht.</p>
+
+      <h3>Kaltes Prefill</h3>
+      <div class="scroller">
+        <table>
+          <caption>Median aus 3 Läufen mit je eigener UUID im Prompt</caption>
+          <thead><tr><th class="num">Token</th><th class="num">NVFP4</th><th class="num">INT4</th><th class="num">Delta</th><th class="num">NVFP4 relativ</th></tr></thead>
+          <tbody>
+            <tr><td class="num">≈ 4 100</td><td class="num best">7161</td><td class="num">5170</td><td class="num">−28 %</td><td class="num">—</td></tr>
+            <tr><td class="num">≈ 16 300</td><td class="num best">5238</td><td class="num">4108</td><td class="num">−22 %</td><td class="num">100 %</td></tr>
+            <tr><td class="num">≈ 64 600</td><td class="num best">2396</td><td class="num">2109</td><td class="num">−12 %</td><td class="num">46 %</td></tr>
+            <tr><td class="num">≈ 131 600</td><td class="num best">1416</td><td class="num">1326</td><td class="num">−6 %</td><td class="num">27 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>NVFP4 bleibt durchgehend vorn, aber der Abstand halbiert sich mit jeder Verlängerung. Bei sehr
+        langen Prompts dominiert die Attention-Berechnung, und der Unterschied im Matrixmultiplikations-Pfad
+        fällt weniger ins Gewicht.</p>
+
+      <div class="note caution">
+        <h4>Steiler Abfall bei langen Prompts</h4>
+        <p>Gemma-4 verliert von 16k auf 65k Token 54 % seiner Prefill-Rate und bis 132k weitere 19
+          Prozentpunkte. Laguna hielt an vergleichbaren Stellen noch 80 und 64 %, Qwen3.6 76 und 58 %.
+          Eine plausible Ursache ist die Fenstergröße: Gemma-4 nutzt 1024er Sliding Windows gegen
+          Lagunas 512, und jede sechste von 30 Layern rechnet volle Attention. Der quadratische Anteil
+          ist damit größer. Diese Zurückführung ist aus der Konfiguration abgeleitet, nicht direkt
+          gemessen.</p>
+      </div>
+    </section>
+
+    <!-- ================= Speicher ================= -->
+    <section id="speicher">
+      <h2>Speicher</h2>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Kennzahl</th><th class="num">NVFP4</th><th class="num">INT4</th><th class="num">Differenz</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Gewichte</td><td class="num">15,88 GiB</td><td class="num">16,63 GiB</td><td class="num">+4,7 %</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num">3 912 140</td><td class="num">3 875 400</td><td class="num">−0,9 %</td></tr>
+            <tr><td class="rowlab">Concurrency bei 262k</td><td class="num">14,92×</td><td class="num">14,78×</td><td class="num">−0,9 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Der Unterschied im KV-Cache entspricht exakt den 0,75 GiB mehr Gewichten. Damit ist der
+        Speicheraspekt in diesem Vergleich <strong>neutral</strong> — anders als bei Laguna, wo NVFP4
+        mit 99,7 gegen 71,9 GB den Cache um Faktor zehn schrumpfen ließ und das Ergebnis dominierte.</p>
+
+      <p>Beide Varianten erreichen zudem die <strong>höchste Cache-Kapazität der gesamten Testreihe</strong>:
+        3,9 Mio. Token gegen 3,4 Mio. bei Qwen3.6 und 1,0 Mio. bei Laguna.</p>
+    </section>
+
+    <!-- ================= Fallstricke ================= -->
+    <section id="fallstricke">
+      <h2>Fallstricke</h2>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Fallstrick</th><th>Symptom</th><th>Gegenmaßnahme</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="rowlab"><code>prefill.py</code> schreibt erst am Ende</td>
+              <td>Abbruch der letzten Stufe verwirft alle vorherigen Messwerte</td>
+              <td>Werte aus dem Laufprotokoll rekonstruieren; besser wäre inkrementelles Schreiben</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Ladezeiten scheinbar verschieden</td>
+              <td>39,2 gegen 101,9 s bei fast gleicher Datenmenge</td>
+              <td>Warmer Seitencache beim zweiten Lauf — nicht als Modelleigenschaft lesen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Formatvorteil pauschal angenommen</td>
+              <td>„NVFP4 ist nativ, also schneller" trifft nur bei niedriger Last zu</td>
+              <td>Über mehrere Concurrency-Stufen messen, nicht nur bei c=1</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Kein MTP verfügbar</td>
+              <td>Decode ohne spekulativen Multiplikator, anders als bei Laguna und Qwen3.6</td>
+              <td>Beim Vergleich zwischen Modellen berücksichtigen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">Multimodalität unerwartet</td>
+              <td>Vision-Encoder belegt Speicher auch im reinen Textbetrieb</td>
+              <td>Vor dem Laden <code>config.json</code> auf <code>vision_config</code> prüfen</td>
+            </tr>
+            <tr>
+              <td class="rowlab">QAT-Qualität unsichtbar</td>
+              <td>Der INT4-Checkpoint ist nachtrainiert, die Messung erfasst nur Tempo</td>
+              <td>Für die Formatwahl getrennt bewerten</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= Serie ================= -->
+    <section id="serie">
+      <h2>Einordnung in die Testreihe</h2>
+
+      <p>Drei Modelle, dieselbe Hardware, dieselbe Engine, derselbe Harness.</p>
+
+      <div class="scroller">
+        <table>
+          <caption>Jeweils die beste gemessene Variante je Modell</caption>
+          <thead><tr><th>Kennzahl</th><th class="num">Laguna-S-2.1</th><th class="num">Qwen3.6-35B</th><th class="num">Gemma-4-26B</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Aktive Parameter</td><td class="num">8 Mrd.</td><td class="num">3 Mrd.</td><td class="num">4 Mrd.</td></tr>
+            <tr><td class="rowlab">Gewichte</td><td class="num">69,34 GiB</td><td class="num">23,45 GiB</td><td class="num best">15,88 GiB</td></tr>
+            <tr><td class="rowlab">Decode c=1</td><td class="num">20,6</td><td class="num best">60,7</td><td class="num">53,0</td></tr>
+            <tr><td class="rowlab">Decode c=4</td><td class="num">52,8</td><td class="num best">180,7</td><td class="num">177,1</td></tr>
+            <tr><td class="rowlab">TTFT bestenfalls</td><td class="num">0,260 s</td><td class="num">0,094 s</td><td class="num best">0,036 s</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num">1 001 532</td><td class="num">3 366 051</td><td class="num best">3 912 140</td></tr>
+            <tr><td class="rowlab">Präfix-Cache-Faktor</td><td class="num">≈ 30</td><td class="num worse">1,0</td><td class="num best">≈ 34</td></tr>
+            <tr><td class="rowlab">Kaltes Prefill bei 16k</td><td class="num">2301</td><td class="num">5301</td><td class="num best">5238</td></tr>
+            <tr><td class="rowlab">Spekulation</td><td class="num">DFlash</td><td class="num">MTP</td><td class="num worse">keine</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Gemma-4 erreicht das zweitbeste Decode-Tempo <em>ohne</em> spekulative Dekodierung, während
+        Qwen3.6 und Laguna beide einen Spekulationsmultiplikator nutzen. Bei den Latenz- und
+        Speicherkennzahlen führt es die Reihe an.</p>
+    </section>
+
+    <!-- ================= Empfehlung ================= -->
+    <section id="empfehlung">
+      <h2>Empfehlung</h2>
+
+      <h3>Für Gemma-4 auf dieser Box</h3>
+      <ul>
+        <li><strong>Einzelnutzer oder niedrige Last</strong> → NVFP4, rund 17 % schneller</li>
+        <li><strong>Ab vier parallelen Streams</strong> → gleichwertig, leichter Vorteil für INT4 bei Prosa</li>
+        <li><strong>Viel Prefill mit kurzen Prompts</strong> → NVFP4, bis zu 28 % schneller</li>
+        <li><strong>Wenn Antwortqualität zählt</strong> → das QAT-INT4 hat einen nicht gemessenen Vorteil</li>
+      </ul>
+
+      <h3>Korrektur einer früheren Aussage</h3>
+      <p>Aus dem Laguna-Test hatte ich abgeleitet, INT4 schlage NVFP4 auf dieser Hardware. Das Ergebnis
+        war dort korrekt, die Verallgemeinerung nicht: es wurde vom Speicherdruck getrieben
+        (99,7 gegen 71,9 GB auf einer 121-GB-Maschine), nicht vom Rechenpfad. Wo der Speicher keine
+        Rolle spielt, gewinnt NVFP4 bei niedriger Last und liegt bei hoher Last gleichauf.</p>
+
+      <h3>Offene Optimierung</h3>
+      <p>Die Messung endet bei vier Streams. INT4 hält dort noch 103 % seiner Einzelstream-Rate, und der
+        KV-Cache ließe 14,8 parallele Vollkontext-Requests zu. Ob INT4 seinen Vorsprung bei acht oder
+        sechzehn Streams ausbaut, ist offen und wäre der naheliegende nächste Test.</p>
+    </section>
+
+    <!-- ================= Limitationen ================= -->
+    <section id="limits">
+      <h2>Limitationen</h2>
+      <ul>
+        <li><strong>215k-Stufe fehlt in beiden Reihen.</strong> Der NVFP4-Lauf wurde dort abgebrochen; der
+          INT4-Lauf wurde zur Wahrung der Symmetrie an derselben Stelle beendet.</li>
+        <li><strong>Prefill-Daten rekonstruiert.</strong> Beide <code>prefill_gemma4_*.json</code> wurden
+          aus den Laufprotokollen erzeugt, weil <code>prefill.py</code> erst am Ende schreibt.</li>
+        <li><strong>QAT-Qualitätsvorteil nicht gemessen.</strong> Der INT4-Checkpoint ist
+          quantisierungsbewusst nachtrainiert; erfasst wurde ausschließlich Geschwindigkeit.</li>
+        <li><strong>Nur eine Engine.</strong> Ausschließlich vLLM 0.25.1; SGLang wurde für Gemma-4 nicht
+          getestet.</li>
+        <li><strong>Zwei von neun Varianten.</strong> AutoRound, modelopt-NVFP4, FP8 und BF16 blieben
+          ungemessen.</li>
+        <li><strong>Concurrency nur bis 4.</strong> Das Skalierungspotenzial beider Formate ist nicht
+          ausgereizt.</li>
+        <li><strong>Multimodalität ungenutzt.</strong> Alle Messungen mit reinen Textanfragen.</li>
+        <li><strong>Je eine Messreihe.</strong> Drei Wiederholungen je Messpunkt, kein Mittel über
+          mehrere Sitzungen.</li>
+      </ul>
+    </section>
+
+    <!-- ================= Glossar ================= -->
+    <section id="glossar">
+      <h2>Glossar</h2>
+      <dl class="glossary">
+        <div class="term">
+          <dt>A4B</dt>
+          <dd>Namenskonvention für „4 Mrd. aktive Parameter". Bei MoE-Modellen bestimmt diese Zahl das
+            Decode-Tempo, die Gesamtparameterzahl den Speicherbedarf.</dd>
+        </div>
+        <div class="term">
+          <dt>MARLIN</dt>
+          <dd>CUDA-Kernel für gewichtsquantisierte Formate mit unquantisierten Aktivierungen (WNA16).
+            Entpackt 4-Bit-Gewichte und multipliziert in höherer Präzision; der Mehraufwand amortisiert
+            sich über größere Batches.</dd>
+        </div>
+        <div class="term">
+          <dt>FLASHINFER_CUTLASS</dt>
+          <dd>Kernel-Pfad, der die FP4-Tensor-Cores der Blackwell-Generation direkt anspricht. Auf
+            sm_121 der native Weg für NVFP4.</dd>
+        </div>
+        <div class="term">
+          <dt>QAT</dt>
+          <dd>Quantization-Aware Training. Das Modell wird mit simulierter Quantisierung nachtrainiert,
+            wodurch der Qualitätsverlust gegenüber nachträglicher Quantisierung geringer ausfällt.</dd>
+        </div>
+        <div class="term">
+          <dt>Sliding-Window-Attention</dt>
+          <dd>Attention über ein begrenztes Fenster zurückliegender Token. Gemma-4 nutzt Fenster von
+            1024 in fünf von sechs Layern. Anders als lineare Attention lässt sich der zugehörige
+            KV-Cache stückweise wiederverwenden.</dd>
+        </div>
+        <div class="term">
+          <dt>Präfix-Cache</dt>
+          <dd>Wiederverwendung der KV-Tensoren eines bereits verarbeiteten Prompt-Anfangs. Bei vLLM
+            Automatic Prefix Caching, bei SGLang RadixAttention.</dd>
+        </div>
+        <div class="term">
+          <dt>compressed-tensors</dt>
+          <dd>Quantisierungs-Container, den vLLM und SGLang direkt lesen. Kann sowohl NVFP4 als auch
+            INT4-Varianten enthalten — dadurch war der hier gezogene Vergleich mit identischem Container
+            möglich.</dd>
+        </div>
+        <div class="term">
+          <dt>TTFT</dt>
+          <dd>Time To First Token. Bestimmt die gefühlte Reaktionszeit; bei langen Prompts vom Prefill
+            dominiert, bei kurzen vom Scheduling.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ================= Artefakte ================= -->
+    <section id="artefakte">
+      <h2>Artefakte</h2>
+
+      <dl class="spec">
+        <dt>start-vllm-gemma4.sh</dt><dd>Startskript, Variante über Argument <code>nvfp4</code> oder <code>int4</code></dd>
+        <dt>bench.py</dt><dd>Durchsatz und TTFT über 4 Szenarien × 3 Concurrency-Stufen</dd>
+        <dt>prefill.py</dt><dd>Kaltes Prefill mit einmaligem UUID-Präfix je Request</dd>
+        <dt>ergebnisse_gemma4_nvfp4.json</dt><dd>12 Messpunkte NVFP4</dd>
+        <dt>ergebnisse_gemma4_int4.json</dt><dd>12 Messpunkte INT4</dd>
+        <dt>prefill_gemma4_*.json</dt><dd>je 4 Prefill-Stufen, aus den Protokollen rekonstruiert</dd>
+        <dt>gemma4-*.log</dt><dd>Startprotokolle beider Läufe, mit den Backend-Zeilen</dd>
+      </dl>
+
+      <div class="note">
+        <p>Alle Dateien in <code>~/bench/</code>. Beide Modelle verbleiben mit zusammen 33 GB im
+          HuggingFace-Cache, der FlashInfer-Kernel-Cache ist warm — ein Neustart dauert wenige Minuten.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Testprotokoll Gemma-4-26B-A4B auf DGX Spark GB10 · 2 Konfigurationen, je 12 Messpunkte und
+    4 Prefill-Stufen · Teil 3 der Reihe nach Laguna-S-2.1 und Qwen3.6-35B-A3B · alle Werte gemessen.
+  </footer>
+
+</div>
+</body>
+</html>
