@@ -245,12 +245,25 @@ start-sglang*.sh       SGLang launch scripts
 ergebnisse_*.json      raw results, 12 measurement points each
 prefill_*.json         raw prefill results
 *.log                  server logs of all 16 starts, including the failed ones
-handouts/              five detailed write-ups (German, self-contained HTML)
+handouts/              five detailed write-ups, each in HTML and Markdown, English and German
+handouts/html2md.py    converter that generates the Markdown versions from the HTML
+handouts/mermaid/      hand-written Mermaid sources replacing the SVG charts in Markdown
 ```
 
 The `handouts/` directory holds the full story: one document per model, plus a synthesis across all
-six configurations. They are standalone HTML with no external dependencies — open them directly in a
-browser.
+six configurations. The HTML versions are standalone with no external dependencies — open them
+directly in a browser. The `.md` versions carry identical content and render on GitHub, with the
+SVG charts of handout 05 replaced by Mermaid `xychart-beta` blocks.
+
+Regenerate the Markdown after editing any HTML:
+
+```bash
+cd handouts && python3 html2md.py *.html
+```
+
+Mermaid has no chart legend, so the two series are named in each chart title: bars are NVFP4, the
+line is INT4. Handouts 01–04 contain no charts in either format — they were tables-only from the
+start, and nothing was invented to fill the gap.
 
 ## Caveats
 
