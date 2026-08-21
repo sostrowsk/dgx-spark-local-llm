@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen3.8-27B auf DGX Spark GB10 — NVFP4 gegen INT4</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground: #F6F8F8;
+    --paper: #FFFFFF;
+    --ink: #0F1A1C;
+    --muted: #546366;
+    --rule: #D9E1E2;
+    --accent: #1A5E63;
+    --accent-wash: #E4EFEF;
+    --ok: #1F7A4D;
+    --ok-wash: #E6F2EB;
+    --fail: #B3261E;
+    --fail-wash: #FAEAE9;
+    --warn: #8A5A00;
+    --warn-wash: #FAF1DF;
+
+    --c-nvfp4: #1A5E63;
+    --c-int4:  #B0562A;
+    --c-ref:   #7E8F90;
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --s1: 0.25rem; --s2: 0.5rem; --s3: 0.75rem; --s4: 1rem;
+    --s5: 1.5rem; --s6: 2rem; --s7: 3rem; --s8: 4.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px; margin: 0 auto; padding: var(--s6) var(--s5) var(--s8);
+    display: grid; grid-template-columns: 1fr; gap: var(--s6);
+  }
+  @media (min-width: 1000px) {
+    .wrap { grid-template-columns: 230px minmax(0, 1fr); gap: var(--s7); align-items: start; }
+    .toc { position: sticky; top: var(--s5); }
+  }
+
+  .masthead { grid-column: 1 / -1; border-bottom: 3px solid var(--ink); padding-bottom: var(--s5); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 var(--s3);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(1.9rem, 4.4vw, 3rem);
+    line-height: 1.12; margin: 0 0 var(--s3); text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.02rem, 1.9vw, 1.22rem);
+    color: var(--muted); margin: 0; max-width: 62ch; line-height: 1.5;
+  }
+  .meta {
+    margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .toc nav { border-left: 2px solid var(--rule); padding-left: var(--s4); }
+  .toc h2 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 var(--s3); font-weight: 600; border: none; padding: 0;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; display: flex; flex-direction: column; gap: 2px; }
+  .toc li { counter-increment: toc; }
+  .toc a {
+    display: block; padding: 4px 0; color: var(--muted); text-decoration: none;
+    font-size: 0.85rem; line-height: 1.35;
+  }
+  .toc a::before { content: counter(toc) "."; font-family: var(--mono); font-size: 0.72rem; color: var(--accent); margin-right: 6px; }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: var(--s7); }
+  section { scroll-margin-top: var(--s5); }
+  h2 {
+    font-family: var(--serif); font-size: clamp(1.35rem, 2.7vw, 1.85rem); font-weight: 600;
+    margin: 0 0 var(--s4); line-height: 1.2; text-wrap: balance;
+    padding-bottom: var(--s2); border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-family: var(--sans); font-size: 1.02rem; font-weight: 650; margin: var(--s5) 0 var(--s3); }
+  h4 {
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: var(--s4) 0 var(--s2); font-weight: 600;
+  }
+  p { margin: 0 0 var(--s4); max-width: 72ch; }
+  main ul, main ol { max-width: 72ch; margin: 0 0 var(--s4); padding-left: var(--s5); }
+  main li { margin-bottom: var(--s2); }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--accent-wash);
+    padding: 1px 5px; border-radius: 3px; color: var(--accent);
+  }
+
+  .tldr { background: var(--ink); color: #EAF0F0; border-radius: 4px; padding: var(--s5) var(--s5) var(--s4); }
+  .tldr h2 { color: #FFF; border-bottom-color: rgba(255,255,255,0.22); }
+  .tldr p { color: #C3D0D1; }
+  .tldr code { background: rgba(255,255,255,0.12); color: #9FD8D6; }
+  .tldr-grid { display: grid; gap: var(--s4); grid-template-columns: 1fr; margin-top: var(--s4); }
+  @media (min-width: 640px) { .tldr-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tldr-item { border-top: 2px solid var(--accent); padding-top: var(--s3); }
+  .tldr-item h3 { margin: 0 0 var(--s2); color: #FFF; font-size: 0.95rem; }
+  .tldr-item p { margin: 0; font-size: 0.9rem; line-height: 1.55; }
+
+  .headline-figs { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: var(--s5) 0 0; }
+  .fig { background: rgba(255,255,255,0.07); border-radius: 3px; padding: var(--s3) var(--s4); }
+  .fig .n {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 600; color: #7FCFCB;
+    display: block; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .fig .l { font-size: 0.76rem; color: #B4C3C4; display: block; margin-top: 4px; line-height: 1.35; }
+
+  .scroller { overflow-x: auto; margin: 0 0 var(--s4); border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  caption {
+    caption-side: top; text-align: left; font-family: var(--mono); font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: var(--s3) var(--s4) var(--s2);
+  }
+  th, td { padding: 7px var(--s3); text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--ink); background: var(--ground);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.best { font-weight: 700; color: var(--accent); }
+  td.worse { color: var(--fail); }
+  .rowlab { font-weight: 600; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 100px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.ok { background: var(--ok-wash); color: var(--ok); }
+  .pill.fail { background: var(--fail-wash); color: var(--fail); }
+  .pill.warn { background: var(--warn-wash); color: var(--warn); }
+
+  pre {
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.55; background: var(--ink);
+    color: #D5E0E1; padding: var(--s3) var(--s4); border-radius: 3px; overflow-x: auto; margin: 0 0 var(--s4);
+  }
+  pre .hl { color: #F0A9A2; }
+  pre .dim { color: #7E8F90; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    padding: var(--s3) var(--s4); margin: 0 0 var(--s4); border-radius: 0 3px 3px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.caution { border-left-color: var(--warn); background: var(--warn-wash); }
+  .note.error { border-left-color: var(--fail); background: var(--fail-wash); }
+  .note h4 { margin-top: 0; color: inherit; }
+
+  details.deep { border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); margin: 0 0 var(--s4); }
+  details.deep > summary {
+    padding: var(--s3) var(--s4); cursor: pointer; font-family: var(--mono);
+    font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  details.deep > summary:hover { background: var(--accent-wash); }
+  details.deep > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  details.deep[open] > summary { border-bottom: 1px solid var(--rule); }
+  .deep-body { padding: var(--s4); }
+  .deep-body > :last-child { margin-bottom: 0; }
+  .deep-body .scroller, .deep-body pre { margin-bottom: var(--s3); }
+
+  dl.spec { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: 0 0 var(--s4); font-size: 0.9rem; }
+  dl.spec dt { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+  dl.spec dd { margin: 0; }
+
+  .glossary { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .glossary { grid-template-columns: 1fr 1fr; } }
+  .term { border-top: 2px solid var(--rule); padding-top: var(--s3); }
+  .term dt { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: var(--s1); }
+  .term dd { margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+
+  figure.chart { margin: 0 0 var(--s5); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: var(--s4); }
+  figure.chart svg { display: block; width: 100%; height: auto; }
+  figure.chart figcaption { font-size: 0.82rem; color: var(--muted); margin-top: var(--s3); line-height: 1.5; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: var(--s4); margin-bottom: var(--s3); font-size: 0.8rem; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); }
+  .chart-legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .svg-grid { stroke: #D9E1E2; stroke-width: 1; }
+  .svg-axis { stroke: #0F1A1C; stroke-width: 1.5; }
+  .svg-tick { font-family: ui-monospace, Menlo, monospace; font-size: 11px; fill: #546366; }
+  .svg-lab { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; fill: #0F1A1C; }
+  .svg-val { font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 600; }
+  .svg-axtitle { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; fill: #546366; letter-spacing: 0.06em; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: var(--s4); margin-top: var(--s5);
+    font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  @media print {
+    body { background: #FFF; }
+    .toc { display: none; }
+    .wrap { grid-template-columns: 1fr; }
+    details.deep { break-inside: avoid; }
+    details.deep > summary { display: none; }
+    details.deep .deep-body { padding: 0; }
+    figure.chart { break-inside: avoid; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Messreihe · DGX Spark GB10 · 21. August 2026</p>
+    <h1>Qwen3.8-27B auf dem DGX Spark</h1>
+    <p class="standfirst">
+      Zwei 4-Bit-Varianten desselben dense Modells, unter identischen Parametern gegeneinander
+      gemessen: NVFP4 gegen INT4. Der Durchsatzvergleich kippt mit der Last, der Prefill-Vergleich
+      nicht — und der größte Unterschied steht in keiner der beiden Modellkarten.
+    </p>
+    <div class="meta">
+      <span><b>Hardware</b> NVIDIA GB10, sm_121a, 121 GB unified</span>
+      <span><b>Engine</b> vLLM 0.25.1 / torch 2.11.0+cu130</span>
+      <span><b>Messpunkte</b> 2 × 12 Durchsatz, 2 × 5 Prefill</span>
+    </div>
+  </header>
+
+  <aside class="toc">
+    <nav aria-label="Inhaltsübersicht">
+      <h2>Inhalt</h2>
+      <ol>
+        <li><a href="#blick">Auf einen Blick</a></li>
+        <li><a href="#kern">Kernaussagen</a></li>
+        <li><a href="#modell">Modell und Varianten</a></li>
+        <li><a href="#aufbau">Testaufbau</a></li>
+        <li><a href="#start">Startverlauf</a></li>
+        <li><a href="#decode">Decode-Durchsatz</a></li>
+        <li><a href="#latenz">Antwortlatenz</a></li>
+        <li><a href="#prefill">Prefill-Skalierung</a></li>
+        <li><a href="#praefix">Der fehlende Präfix-Cache</a></li>
+        <li><a href="#speicher">Speicher und KV-Cache</a></li>
+        <li><a href="#kernel">Kernel-Pfade</a></li>
+        <li><a href="#mtp">Spekulatives Decoding</a></li>
+        <li><a href="#einordnung">Einordnung</a></li>
+        <li><a href="#empfehlung">Empfehlung</a></li>
+        <li><a href="#limit">Limitationen</a></li>
+        <li><a href="#glossar">Glossar</a></li>
+        <li><a href="#artefakte">Artefakte</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ============================================ TL;DR -->
+    <section id="blick" class="tldr">
+      <h2>Auf einen Blick</h2>
+      <p>
+        Qwen3.8-27B ist ein <strong>dense</strong> Vision-Language-Modell mit hybrider Attention und
+        eingebautem MTP-Kopf. Beide 4-Bit-Varianten wurden mit identischen Parametern auf demselben
+        Gerät gemessen. Keine der beiden gewinnt auf ganzer Linie.
+      </p>
+
+      <div class="tldr-grid">
+        <div class="tldr-item">
+          <h3>Decode: die Last entscheidet</h3>
+          <p>
+            NVFP4 liegt bei einem Stream 16 % vorn, INT4 bei vier Streams 6 %. Der Wechsel liegt
+            zwischen c=2 und c=4 — dasselbe Muster wie bei Gemma-4, jetzt auch auf einem dense Modell.
+          </p>
+        </div>
+        <div class="tldr-item">
+          <h3>Prefill: NVFP4 durchgehend</h3>
+          <p>
+            Faktor 2,04 bei kurzen Prompts, 1,37 bei 198k. Kein Umschlagpunkt. W4A16 muss die
+            Gewichte für jede GEMM entpacken, was den rechenlastigen Prefill trifft.
+          </p>
+        </div>
+        <div class="tldr-item">
+          <h3>KV-Cache: fast doppelt</h3>
+          <p>
+            NVFP4 fasst 2,19 Mio. Token, INT4 nur 1,19 Mio. — bei <em>weniger</em> Cache-Speicher.
+            Ursache sind fehlende <code>k_scale</code>/<code>v_scale</code> im INT4-Checkpoint.
+          </p>
+        </div>
+        <div class="tldr-item">
+          <h3>27 B aktiv, trotzdem 21,5 tok/s</h3>
+          <p>
+            Rechnerisch wären ~9 tok/s zu erwarten. Der MTP-Kopf akzeptiert 76–89 % seiner Entwürfe
+            und hebt das Ergebnis auf das Niveau eines 8-B-MoE.
+          </p>
+        </div>
+      </div>
+
+      <div class="headline-figs">
+        <div class="fig"><span class="n">21,5</span><span class="l">tok/s Decode c=1, NVFP4</span></div>
+        <div class="fig"><span class="n">70,9</span><span class="l">tok/s Decode c=4, INT4</span></div>
+        <div class="fig"><span class="n">2,04×</span><span class="l">Prefill-Vorsprung NVFP4</span></div>
+        <div class="fig"><span class="n">1,0×</span><span class="l">Präfix-Cache-Effekt</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================ KERNAUSSAGEN -->
+    <section id="kern">
+      <h2>Kernaussagen</h2>
+      <ol>
+        <li>
+          <strong>Der NVFP4-INT4-Umschlagpunkt ist eine Kernel-Eigenschaft, keine Modell-Eigenschaft.</strong>
+          Gemma-4 (MoE, 4 B aktiv) und Qwen3.8 (dense, 27 B aktiv) zeigen ihn an derselben Stelle mit
+          fast identischen Prozentwerten.
+        </li>
+        <li>
+          <strong>Beim Prefill gibt es keinen Umschlagpunkt.</strong> NVFP4 gewinnt auf allen fünf
+          Längenstufen. Der Vorsprung schrumpft mit der Kontextlänge, weil die in beiden Varianten
+          identische Attention einen wachsenden Anteil der Arbeit übernimmt.
+        </li>
+        <li>
+          <strong>Die KV-Cache-Kapazität steht nicht in der Quantisierung, sondern im Checkpoint.</strong>
+          Der INT4-Checkpoint liefert keine KV-Skalen mit; vLLM fällt auf einen bf16-Cache zurück und
+          halbiert damit die Kapazität. Weder Modellname noch <code>quantization_config</code> weisen
+          darauf hin.
+        </li>
+        <li>
+          <strong>Spekulatives Decoding ist der entscheidende Hebel für dense Modelle auf dieser
+          Hardware.</strong> Es hebt die Bandbreitengrenze nicht auf, sondern verteilt sie auf mehrere
+          Token pro Durchgang — genau das, was 27 B aktive Parameter an 273 GB/s brauchen.
+        </li>
+        <li>
+          <strong>Der Präfix-Cache greift auch hier nicht</strong>, obwohl jede vierte Schicht volle
+          Attention ist. vLLM schaltet ihn für Hybridmodelle selbsttätig ab.
+        </li>
+        <li>
+          <strong>Der 262k-Kontext ist nominell vorhanden, praktisch kaum nutzbar.</strong> Allein der
+          Prefill von 198k Token dauert 3:53 min (NVFP4) bzw. 5:18 min (INT4).
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============================================ MODELL -->
+    <section id="modell">
+      <h2>Modell und Varianten</h2>
+
+      <p>
+        Qwen3.8-27B unterscheidet sich in zwei Punkten grundlegend von den bisher auf diesem Gerät
+        gemessenen Modellen: es ist <strong>dense</strong> statt MoE, und es ist multimodal.
+      </p>
+
+      <dl class="spec">
+        <dt>Architektur</dt><dd><code>Qwen3_5ForConditionalGeneration</code> — Vision-Language, Textteil <code>qwen3_5_text</code></dd>
+        <dt>Schichten</dt><dd>64, davon 48 <code>linear_attention</code> und 16 <code>full_attention</code> (<code>full_attention_interval = 4</code>)</dd>
+        <dt>Attention</dt><dd>24 Query-Heads, 4 KV-Heads (GQA), <code>head_dim</code> 256, <code>partial_rotary_factor</code> 0,25</dd>
+        <dt>Lineare Schichten</dt><dd>16 Key-Heads, 48 Value-Heads, je 128 Dimensionen, <code>mamba_ssm_dtype</code> float32</dd>
+        <dt>Kontext</dt><dd>262 144 Token</dd>
+        <dt>MTP</dt><dd><code>mtp_num_hidden_layers = 1</code>, Embeddings mit dem Zielmodell geteilt</dd>
+        <dt>Vision</dt><dd>27 Blöcke, <code>hidden_size</code> 1152, Patch 16 — im Benchmark nicht angesprochen</dd>
+      </dl>
+
+      <div class="note caution">
+        <h4>„NVFP4“ heißt hier nicht durchgehend 4 Bit</h4>
+        <p>
+          Der Checkpoint ist <code>mixed-precision</code>: die MLP-Schichten liegen in NVFP4
+          (W4A4, <code>tensor_group</code>, Gruppengröße 16), die Attention-Projektionen dagegen in
+          <strong>FP8</strong> (W8A8, channel-wise). Die <code>linear_attn</code>-Blöcke sind
+          vollständig ausgenommen — 303 Einträge in der <code>ignore</code>-Liste. Daher 21,81 GiB
+          statt der bei reinem FP4 zu erwartenden rund 14 GiB.
+        </p>
+      </div>
+
+      <div class="scroller">
+        <table>
+          <caption>Die beiden verglichenen Varianten</caption>
+          <thead>
+            <tr><th>&nbsp;</th><th>unsloth NVFP4</th><th>RedHatAI INT4</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="rowlab">Revision</td><td class="num">7d6f8d4d</td><td class="num">2fb0debc</td></tr>
+            <tr><td class="rowlab">Checkpoint-Größe</td><td class="num">21,81 GiB</td><td class="num">18,12 GiB</td></tr>
+            <tr><td class="rowlab">Format</td><td class="num">mixed-precision</td><td class="num">pack-quantized</td></tr>
+            <tr><td class="rowlab">Gewichte MLP</td><td class="num">4 bit float, gs 16</td><td class="num">4 bit int, gs 128</td></tr>
+            <tr><td class="rowlab">Gewichte Attention</td><td class="num">8 bit float, channel</td><td class="num">4 bit int, gs 128</td></tr>
+            <tr><td class="rowlab">Aktivierungen</td><td class="num">4 bit / 8 bit float</td><td class="num">bf16</td></tr>
+            <tr><td class="rowlab">MTP-Tensoren</td><td class="num">15</td><td class="num">15</td></tr>
+            <tr><td class="rowlab"><code>k_scale</code> / <code>v_scale</code></td><td class="num best">16 / 16</td><td class="num worse">0 / 0</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="deep">
+        <summary>Auswahlverfahren — warum diese beiden</summary>
+        <div class="deep-body">
+          <p>
+            Die HF-API listet über 100 Ableitungen von Qwen3.8-27B. Nach Ausschluss von GGUF, MLX,
+            AMD-Quark und Abliterated-Varianten blieben als ernsthafte 4-Bit-Kandidaten für vLLM auf
+            sm_121a:
+          </p>
+          <div class="scroller">
+            <table>
+              <thead><tr><th>Repo</th><th>Größe</th><th>Schema</th></tr></thead>
+              <tbody>
+                <tr><td class="rowlab">RedHatAI/…-INT4</td><td class="num">18,1 GiB</td><td>INT4 W4A16, gs 128</td></tr>
+                <tr><td class="rowlab">sakamakismile/…-MTP-NVFP4</td><td class="num">19,1 GiB</td><td>NVFP4 W4A4 durchgehend</td></tr>
+                <tr><td class="rowlab">cyankiwi/…-AWQ-INT4</td><td class="num">19,6 GiB</td><td>INT4 W4A16, gs 32, AWQ-kalibriert</td></tr>
+                <tr><td class="rowlab">RadixArk/…-NVFP4</td><td class="num">20,4 GiB</td><td>modelopt, MTP in bf16</td></tr>
+                <tr><td class="rowlab">unsloth/…-NVFP4</td><td class="num">21,8 GiB</td><td>mixed NVFP4 + FP8</td></tr>
+                <tr><td class="rowlab">RedHatAI/…-NVFP4</td><td class="num">21,8 GiB</td><td>Config identisch zu unsloth</td></tr>
+                <tr><td class="rowlab">Inferact/…-NVFP4</td><td class="num">24,6 GiB</td><td>modelopt</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Gewählt wurden <code>unsloth/Qwen3.8-27B-NVFP4</code> und
+            <code>RedHatAI/Qwen3.8-27B-INT4</code>: beide <code>compressed-tensors</code>, beide
+            Formate auf diesem Gerät bereits erfolgreich gefahren, und mit 21,8 gegen 18,1 GiB nah
+            genug beieinander, dass — anders als bei Laguna — kein Speicherdruck den Vergleich
+            verfälscht.
+          </p>
+          <div class="note">
+            <h4>Namensfalle: „DSpark“ ist nicht der DGX Spark</h4>
+            <p>
+              Mehrere Repos heißen <code>Qwen3.8-27B-DSpark…</code> und wirken hardwarespezifisch.
+              Sie sind es nicht: <code>RadixArk/Qwen3.8-27B-DSpark</code> ist 2,5 GiB groß,
+              Architektur <code>DSparkDraftModel</code> — ein <strong>Draft-Modell für spekulatives
+              Decoding</strong>, DFlash-Nachfolger mit Confidence-Head, 1,36 Mrd. Parameter,
+              5 Full-Attention-Schichten, Block-Größe 7. Zielmodell ist
+              <code>Qwen/Qwen3.8-27B-FP8</code>, Serving laut Modellkarte über SGLang. Nicht Teil
+              dieser Messreihe.
+            </p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============================================ AUFBAU -->
+    <section id="aufbau">
+      <h2>Testaufbau</h2>
+
+      <p>
+        Beide Varianten liefen mit denselben Leistungsparametern, damit ausschließlich die
+        Quantisierung variiert. Die Werte entsprechen denen der Qwen3.6-Messreihe, sodass die
+        Zahlen vergleichbar bleiben.
+      </p>
+
+      <pre><span class="dim"># start-vllm-qwen38-{nvfp4,int4}.sh</span>
+export CUTE_DSL_ARCH=sm_121a
+export MAX_JOBS=1
+
+vllm serve &lt;modell&gt; \
+  --revision <span class="hl">&lt;gepinnt&gt;</span> \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --reasoning-parser qwen3 \
+  --max-num-seqs 32 \
+  --max-model-len 262144 \
+  --gpu-memory-utilization 0.85 \
+  --host 0.0.0.0 --port 8000</pre>
+
+      <p>
+        Gemessen wurde mit den beiden Skripten der bestehenden Messreihe: <code>bench.py</code>
+        (4 Szenarien × 3 Nebenläufigkeitsstufen × 3 Wiederholungen, warmer Fall) und
+        <code>prefill.py</code> (5 Längenstufen mit je eigener UUID im Präfix, kalter Fall). Beide
+        sprechen die OpenAI-kompatible API, jede Konfiguration erhält identische Anfragen. Vor jeder
+        Messreihe läuft eine Aufwärmanfrage.
+      </p>
+
+      <div class="note">
+        <p>
+          Die Revisionen sind gepinnt. Grund ist die Erfahrung aus der Laguna-Messreihe: poolside
+          hatte <code>main</code> auf einen Checkpoint umgestellt, der trotz gleichlautender
+          <code>quantization_config</code> andere Gewichte enthielt und die Messwerte entwertete.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ START -->
+    <section id="start">
+      <h2>Startverlauf</h2>
+
+      <p>
+        Beide Server starteten im ersten Anlauf, ohne Fehlversuche. Der Kernel-Cache war vom
+        Qwen3.6-Lauf her bereits warm.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Zeit bis zur Bereitschaft</caption>
+          <thead><tr><th>Phase</th><th>NVFP4</th><th>INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">torch.compile Backbone</td><td class="num">55,19 s</td><td class="num">36,81 s</td></tr>
+            <tr><td class="rowlab">torch.compile MTP-Kopf</td><td class="num">6,94 s</td><td class="num">6,67 s</td></tr>
+            <tr><td class="rowlab">CUDA-Graph-Speicher</td><td class="num">0,22 GiB</td><td class="num">0,10 GiB</td></tr>
+            <tr><td class="rowlab">bereit nach</td><td class="num">334 s</td><td class="num best">309 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Beide Läufe melden <code>Add 3 padding layers, may waste at most 6.25 %</code> — eine Folge
+        der hybriden Architektur, bei der die Seitengröße der Attention an die der Mamba-Schichten
+        angeglichen werden muss.
+      </p>
+    </section>
+
+    <!-- ============================================ DECODE -->
+    <section id="decode">
+      <h2>Decode-Durchsatz</h2>
+
+      <p>
+        Gesamtdurchsatz über alle nebenläufigen Anfragen, Median aus drei Läufen, Szenario
+        <code>prosa_decode</code> mit 256 Ausgabe-Token je Anfrage.
+      </p>
+
+      <figure class="chart">
+        <div class="chart-legend">
+          <span><i style="background:#1A5E63"></i> NVFP4</span>
+          <span><i style="background:#B0562A"></i> INT4</span>
+        </div>
+        <svg viewBox="0 0 720 300" role="img" aria-label="Balkendiagramm des Gesamtdurchsatzes. Bei einem Stream erreicht NVFP4 21,5 und INT4 18,6 Token pro Sekunde. Bei zwei Streams 37,0 gegen 37,3. Bei vier Streams 63,3 gegen 67,4.">
+          <!-- Gitterlinien -->
+          <line class="svg-grid" x1="60" y1="250" x2="700" y2="250"/>
+          <line class="svg-grid" x1="60" y1="192.5" x2="700" y2="192.5"/>
+          <line class="svg-grid" x1="60" y1="135" x2="700" y2="135"/>
+          <line class="svg-grid" x1="60" y1="77.5" x2="700" y2="77.5"/>
+          <line class="svg-grid" x1="60" y1="20" x2="700" y2="20"/>
+          <!-- y-Achsenbeschriftung -->
+          <text class="svg-tick" x="52" y="254" text-anchor="end">0</text>
+          <text class="svg-tick" x="52" y="196.5" text-anchor="end">17,5</text>
+          <text class="svg-tick" x="52" y="139" text-anchor="end">35</text>
+          <text class="svg-tick" x="52" y="81.5" text-anchor="end">52,5</text>
+          <text class="svg-tick" x="52" y="24" text-anchor="end">70</text>
+          <text class="svg-axtitle" x="60" y="12">TOK/S GESAMT</text>
+          <!-- Achse -->
+          <line class="svg-axis" x1="60" y1="250" x2="700" y2="250"/>
+
+          <!-- Gruppe c=1 -->
+          <rect x="102" y="179.5" width="60" height="70.5" fill="#1A5E63"/>
+          <rect x="166" y="188.8" width="60" height="61.2" fill="#B0562A"/>
+          <text class="svg-val" x="132" y="173" text-anchor="middle" fill="#1A5E63">21,5</text>
+          <text class="svg-val" x="196" y="182" text-anchor="middle" fill="#B0562A">18,6</text>
+          <text class="svg-lab" x="164" y="270" text-anchor="middle">1 Stream</text>
+
+          <!-- Gruppe c=2 -->
+          <rect x="315" y="128.5" width="60" height="121.5" fill="#1A5E63"/>
+          <rect x="379" y="127.5" width="60" height="122.5" fill="#B0562A"/>
+          <text class="svg-val" x="345" y="122" text-anchor="middle" fill="#1A5E63">37,0</text>
+          <text class="svg-val" x="409" y="121" text-anchor="middle" fill="#B0562A">37,3</text>
+          <text class="svg-lab" x="377" y="270" text-anchor="middle">2 Streams</text>
+
+          <!-- Gruppe c=4 -->
+          <rect x="528" y="41.9" width="60" height="208.1" fill="#1A5E63"/>
+          <rect x="592" y="28.6" width="60" height="221.4" fill="#B0562A"/>
+          <text class="svg-val" x="558" y="35.4" text-anchor="middle" fill="#1A5E63">63,3</text>
+          <text class="svg-val" x="622" y="22.1" text-anchor="middle" fill="#B0562A">67,4</text>
+          <text class="svg-lab" x="590" y="270" text-anchor="middle">4 Streams</text>
+
+          <!-- Vorsprungsmarkierung -->
+          <text class="svg-tick" x="164" y="288" text-anchor="middle" fill="#1A5E63">NVFP4 +16 %</text>
+          <text class="svg-tick" x="377" y="288" text-anchor="middle" fill="#546366">gleichauf</text>
+          <text class="svg-tick" x="590" y="288" text-anchor="middle" fill="#B0562A">INT4 +6 %</text>
+        </svg>
+        <figcaption>
+          Der Vorsprung wechselt zwischen zwei und vier Streams die Seite. Bei zwei Streams liegen
+          beide innerhalb von 0,8 % — das ist der Kreuzungspunkt.
+        </figcaption>
+      </figure>
+
+      <div class="scroller">
+        <table>
+          <caption>Alle Decode-Messpunkte, Gesamtdurchsatz in tok/s</caption>
+          <thead>
+            <tr><th>Szenario</th><th>Streams</th><th>NVFP4</th><th>INT4</th><th>Differenz</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="rowlab">prosa_decode</td><td class="num">1</td><td class="num best">21,47</td><td class="num">18,62</td><td class="num">NVFP4 +15,3 %</td></tr>
+            <tr><td class="rowlab">prosa_decode</td><td class="num">2</td><td class="num">36,98</td><td class="num best">37,28</td><td class="num">INT4 +0,8 %</td></tr>
+            <tr><td class="rowlab">prosa_decode</td><td class="num">4</td><td class="num">63,32</td><td class="num best">67,40</td><td class="num">INT4 +6,4 %</td></tr>
+            <tr><td class="rowlab">code_decode</td><td class="num">1</td><td class="num best">19,87</td><td class="num">18,05</td><td class="num">NVFP4 +10,1 %</td></tr>
+            <tr><td class="rowlab">code_decode</td><td class="num">2</td><td class="num best">39,55</td><td class="num">38,62</td><td class="num">NVFP4 +2,4 %</td></tr>
+            <tr><td class="rowlab">code_decode</td><td class="num">4</td><td class="num">65,98</td><td class="num best">70,88</td><td class="num">INT4 +7,4 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note caution">
+        <h4>Was hier tatsächlich gemessen wird</h4>
+        <p>
+          Eine Stichprobe nach dem Lauf ergab bei 120 angeforderten Token <strong>531 Zeichen im Feld
+          <code>reasoning</code> und ein leeres <code>content</code></strong>. Bei 256 Token je
+          Anfrage misst der Decode-Durchsatz hier also fast ausschließlich die Erzeugung von
+          Reasoning-Token; eine fertige Antwort entsteht in keinem der Läufe. Die Rate ist als Rate
+          gültig, sie ist aber kein Maß für die Zeit bis zur Antwort. Der Unterschied zwischen
+          <code>prosa_decode</code> und <code>code_decode</code> ist aus demselben Grund nicht
+          belastbar.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ LATENZ -->
+    <section id="latenz">
+      <h2>Antwortlatenz</h2>
+
+      <p>
+        Zeit bis zum ersten Token, Median, Szenario <code>prosa_decode</code> mit kurzem Prompt
+        (35 Eingabe-Token).
+      </p>
+
+      <figure class="chart">
+        <div class="chart-legend">
+          <span><i style="background:#1A5E63"></i> NVFP4</span>
+          <span><i style="background:#B0562A"></i> INT4</span>
+        </div>
+        <svg viewBox="0 0 720 260" role="img" aria-label="Balkendiagramm der Zeit bis zum ersten Token. Bei einem Stream 0,300 Sekunden für NVFP4 und 0,333 für INT4. Bei zwei Streams 0,284 gegen 0,527. Bei vier Streams 0,475 gegen 0,549.">
+          <line class="svg-grid" x1="60" y1="210" x2="700" y2="210"/>
+          <line class="svg-grid" x1="60" y1="162.5" x2="700" y2="162.5"/>
+          <line class="svg-grid" x1="60" y1="115" x2="700" y2="115"/>
+          <line class="svg-grid" x1="60" y1="67.5" x2="700" y2="67.5"/>
+          <line class="svg-grid" x1="60" y1="20" x2="700" y2="20"/>
+          <text class="svg-tick" x="52" y="214" text-anchor="end">0</text>
+          <text class="svg-tick" x="52" y="166.5" text-anchor="end">0,15</text>
+          <text class="svg-tick" x="52" y="119" text-anchor="end">0,30</text>
+          <text class="svg-tick" x="52" y="71.5" text-anchor="end">0,45</text>
+          <text class="svg-tick" x="52" y="24" text-anchor="end">0,60</text>
+          <text class="svg-axtitle" x="60" y="12">TTFT IN SEKUNDEN — NIEDRIGER IST BESSER</text>
+          <line class="svg-axis" x1="60" y1="210" x2="700" y2="210"/>
+
+          <!-- c=1: 0.300 -> 95.0 hoch ; 0.333 -> 105.5 -->
+          <rect x="102" y="115.0" width="60" height="95.0" fill="#1A5E63"/>
+          <rect x="166" y="104.5" width="60" height="105.5" fill="#B0562A"/>
+          <text class="svg-val" x="132" y="108.5" text-anchor="middle" fill="#1A5E63">0,300</text>
+          <text class="svg-val" x="196" y="98" text-anchor="middle" fill="#B0562A">0,333</text>
+          <text class="svg-lab" x="164" y="232" text-anchor="middle">1 Stream</text>
+
+          <!-- c=2: 0.284 -> 89.9 ; 0.527 -> 166.9 -->
+          <rect x="315" y="120.1" width="60" height="89.9" fill="#1A5E63"/>
+          <rect x="379" y="43.1" width="60" height="166.9" fill="#B0562A"/>
+          <text class="svg-val" x="345" y="113.6" text-anchor="middle" fill="#1A5E63">0,284</text>
+          <text class="svg-val" x="409" y="36.6" text-anchor="middle" fill="#B0562A">0,527</text>
+          <text class="svg-lab" x="377" y="232" text-anchor="middle">2 Streams</text>
+
+          <!-- c=4: 0.475 -> 150.4 ; 0.549 -> 173.9 -->
+          <rect x="528" y="59.6" width="60" height="150.4" fill="#1A5E63"/>
+          <rect x="592" y="36.1" width="60" height="173.9" fill="#B0562A"/>
+          <text class="svg-val" x="558" y="53.1" text-anchor="middle" fill="#1A5E63">0,475</text>
+          <text class="svg-val" x="622" y="29.6" text-anchor="middle" fill="#B0562A">0,549</text>
+          <text class="svg-lab" x="590" y="232" text-anchor="middle">4 Streams</text>
+
+          <text class="svg-tick" x="164" y="250" text-anchor="middle" fill="#1A5E63">NVFP4 −10 %</text>
+          <text class="svg-tick" x="377" y="250" text-anchor="middle" fill="#1A5E63">NVFP4 −46 %</text>
+          <text class="svg-tick" x="590" y="250" text-anchor="middle" fill="#1A5E63">NVFP4 −13 %</text>
+        </svg>
+        <figcaption>
+          Bei kurzen Prompts liegt NVFP4 auf allen Stufen vorn — im Gegensatz zum Decode-Durchsatz,
+          wo INT4 ab vier Streams gewinnt. Der Ausreißer bei zwei Streams (0,527 s) ist der einzige
+          Punkt, an dem INT4 deutlich abfällt.
+        </figcaption>
+      </figure>
+
+      <details class="deep">
+        <summary>Rohdaten — alle TTFT-Messpunkte</summary>
+        <div class="deep-body">
+          <div class="scroller">
+            <table>
+              <caption>Zeit bis zum ersten Token, Median aus drei Läufen</caption>
+              <thead>
+                <tr><th>Szenario</th><th>Streams</th><th>NVFP4</th><th>INT4</th><th>Differenz</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="rowlab">prosa_decode</td><td class="num">1</td><td class="num best">0,300 s</td><td class="num">0,333 s</td><td class="num">NVFP4 −9,9 %</td></tr>
+                <tr><td class="rowlab">prosa_decode</td><td class="num">2</td><td class="num best">0,284 s</td><td class="num">0,527 s</td><td class="num">NVFP4 −46,1 %</td></tr>
+                <tr><td class="rowlab">prosa_decode</td><td class="num">4</td><td class="num best">0,475 s</td><td class="num">0,549 s</td><td class="num">NVFP4 −13,5 %</td></tr>
+                <tr><td class="rowlab">code_decode</td><td class="num">1</td><td class="num best">0,272 s</td><td class="num">0,336 s</td><td class="num">NVFP4 −19,0 %</td></tr>
+                <tr><td class="rowlab">code_decode</td><td class="num">2</td><td class="num best">0,291 s</td><td class="num">0,389 s</td><td class="num">NVFP4 −25,2 %</td></tr>
+                <tr><td class="rowlab">code_decode</td><td class="num">4</td><td class="num best">0,471 s</td><td class="num">0,521 s</td><td class="num">NVFP4 −9,6 %</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            NVFP4 liegt auf allen zwölf Latenzmesspunkten vorn — anders als beim Durchsatz gibt es
+            hier keinen Lastbereich, in dem INT4 gewinnt. Der Vorsprung schwankt zwischen 9,6 und
+            46,1 %, ohne erkennbaren Trend über die Nebenläufigkeit.
+          </p>
+        </div>
+      </details>
+
+      <p>
+        Beide Varianten liegen deutlich über den 0,094 s von Qwen3.6 und den 0,036 s von Gemma-4.
+        Das ist erwartbar: Selbst bei 35 Eingabe-Token muss ein dense Modell für das erste Token
+        seine vollständigen Gewichte durch den Speicherbus ziehen.
+      </p>
+    </section>
+
+    <!-- ============================================ PREFILL -->
+    <section id="prefill">
+      <h2>Prefill-Skalierung</h2>
+
+      <p>
+        Kalte Messung: jede Anfrage erhält eine eigene UUID im Präfix, sodass kein Cache greifen
+        kann. Fünf Längenstufen, Median aus drei Anfragen.
+      </p>
+
+      <figure class="chart">
+        <div class="chart-legend">
+          <span><i style="background:#1A5E63"></i> NVFP4</span>
+          <span><i style="background:#B0562A"></i> INT4</span>
+        </div>
+        <svg viewBox="0 0 720 300" role="img" aria-label="Liniendiagramm der Prefill-Rate über die Kontextlänge. NVFP4 fällt von 1946 Token pro Sekunde bei 4k auf 852 bei 198k. INT4 fällt von 939 auf 623. NVFP4 liegt auf allen Stufen vorn.">
+          <line class="svg-grid" x1="70" y1="250" x2="700" y2="250"/>
+          <line class="svg-grid" x1="70" y1="192.5" x2="700" y2="192.5"/>
+          <line class="svg-grid" x1="70" y1="135" x2="700" y2="135"/>
+          <line class="svg-grid" x1="70" y1="77.5" x2="700" y2="77.5"/>
+          <line class="svg-grid" x1="70" y1="20" x2="700" y2="20"/>
+          <text class="svg-tick" x="62" y="254" text-anchor="end">0</text>
+          <text class="svg-tick" x="62" y="196.5" text-anchor="end">500</text>
+          <text class="svg-tick" x="62" y="139" text-anchor="end">1000</text>
+          <text class="svg-tick" x="62" y="81.5" text-anchor="end">1500</text>
+          <text class="svg-tick" x="62" y="24" text-anchor="end">2000</text>
+          <text class="svg-axtitle" x="70" y="12">PREFILL TOK/S</text>
+          <line class="svg-axis" x1="70" y1="250" x2="700" y2="250"/>
+
+          <!-- NVFP4-Linie -->
+          <polyline fill="none" stroke="#1A5E63" stroke-width="2.5" stroke-linejoin="round"
+                    points="70,26.2 227,27.7 384,83.0 541,127.4 698,152.0"/>
+          <circle cx="70"  cy="26.2"  r="4" fill="#1A5E63"/>
+          <circle cx="227" cy="27.7"  r="4" fill="#1A5E63"/>
+          <circle cx="384" cy="83.0"  r="4" fill="#1A5E63"/>
+          <circle cx="541" cy="127.4" r="4" fill="#1A5E63"/>
+          <circle cx="698" cy="152.0" r="4" fill="#1A5E63"/>
+          <text class="svg-val" x="78"  y="20"  fill="#1A5E63">1946</text>
+          <text class="svg-val" x="227" y="20"  text-anchor="middle" fill="#1A5E63">1933</text>
+          <text class="svg-val" x="384" y="76"  text-anchor="middle" fill="#1A5E63">1452</text>
+          <text class="svg-val" x="541" y="120" text-anchor="middle" fill="#1A5E63">1066</text>
+          <text class="svg-val" x="690" y="146" text-anchor="end" fill="#1A5E63">852</text>
+
+          <!-- INT4-Linie -->
+          <polyline fill="none" stroke="#B0562A" stroke-width="2.5" stroke-linejoin="round"
+                    points="70,142.0 227,140.9 384,155.7 541,168.1 698,178.4"/>
+          <circle cx="70"  cy="142.0" r="4" fill="#B0562A"/>
+          <circle cx="227" cy="140.9" r="4" fill="#B0562A"/>
+          <circle cx="384" cy="155.7" r="4" fill="#B0562A"/>
+          <circle cx="541" cy="168.1" r="4" fill="#B0562A"/>
+          <circle cx="698" cy="178.4" r="4" fill="#B0562A"/>
+          <text class="svg-val" x="78"  y="158" fill="#B0562A">939</text>
+          <text class="svg-val" x="227" y="157" text-anchor="middle" fill="#B0562A">949</text>
+          <text class="svg-val" x="384" y="172" text-anchor="middle" fill="#B0562A">820</text>
+          <text class="svg-val" x="541" y="184" text-anchor="middle" fill="#B0562A">712</text>
+          <text class="svg-val" x="690" y="194" text-anchor="end" fill="#B0562A">623</text>
+
+          <!-- x-Achsenbeschriftung -->
+          <text class="svg-lab" x="70"  y="270" text-anchor="middle">4k</text>
+          <text class="svg-lab" x="227" y="270" text-anchor="middle">16k</text>
+          <text class="svg-lab" x="384" y="270" text-anchor="middle">66k</text>
+          <text class="svg-lab" x="541" y="270" text-anchor="middle">131k</text>
+          <text class="svg-lab" x="698" y="270" text-anchor="middle">198k</text>
+          <text class="svg-axtitle" x="384" y="290" text-anchor="middle">PROMPT-LÄNGE IN TOKEN</text>
+
+          <!-- Faktoren -->
+          <text class="svg-tick" x="70"  y="112" text-anchor="middle" fill="#546366">2,04×</text>
+          <text class="svg-tick" x="227" y="112" text-anchor="middle" fill="#546366">2,04×</text>
+          <text class="svg-tick" x="384" y="128" text-anchor="middle" fill="#546366">1,73×</text>
+          <text class="svg-tick" x="541" y="156" text-anchor="middle" fill="#546366">1,47×</text>
+          <text class="svg-tick" x="698" y="170" text-anchor="middle" fill="#546366">1,37×</text>
+        </svg>
+        <figcaption>
+          Der Abstand zwischen den Linien ist der NVFP4-Vorsprung; die grauen Werte geben ihn als
+          Faktor an. Er schrumpft mit der Kontextlänge, kehrt sich aber nie um.
+        </figcaption>
+      </figure>
+
+      <p>
+        Die Ursache liegt in der Bedeutung von <strong>W4A16</strong>: INT4 hält die Aktivierungen in
+        bf16 und muss die Gewichte für jede Matrixmultiplikation entpacken. Beim bandbreitengebundenen
+        Decode fällt dieser Aufwand nicht ins Gewicht — dort ist er sogar von Vorteil, weil Marlin
+        ihn über den Batch amortisiert. Beim rechengebundenen Prefill dominiert er, während der
+        W4A4-Pfad von NVFP4 die FP4-Tensorkerne direkt bedient.
+      </p>
+
+      <p>
+        Dass der Faktor mit der Länge abnimmt, passt dazu: Die Attention ist in beiden Varianten
+        identisch und übernimmt bei wachsendem Kontext einen immer größeren Anteil der Arbeit,
+        wodurch der Unterschied in den linearen Schichten relativ an Gewicht verliert.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Kaltes Prefill, absolute Zeiten</caption>
+          <thead>
+            <tr><th>Stufe</th><th>Token</th><th>NVFP4 TTFT</th><th>tok/s</th><th>INT4 TTFT</th><th>tok/s</th><th>Faktor</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="rowlab">~5k</td><td class="num">4 126</td><td class="num best">2,12 s</td><td class="num">1 946</td><td class="num">4,33 s</td><td class="num">939</td><td class="num">2,04×</td></tr>
+            <tr><td class="rowlab">~18k</td><td class="num">16 426</td><td class="num best">8,50 s</td><td class="num">1 933</td><td class="num">17,31 s</td><td class="num">949</td><td class="num">2,04×</td></tr>
+            <tr><td class="rowlab">~72k</td><td class="num">65 875</td><td class="num best">45,38 s</td><td class="num">1 452</td><td class="num">78,62 s</td><td class="num">820</td><td class="num">1,73×</td></tr>
+            <tr><td class="rowlab">~145k</td><td class="num">131 204</td><td class="num best">123,12 s</td><td class="num">1 066</td><td class="num">181,51 s</td><td class="num">712</td><td class="num">1,47×</td></tr>
+            <tr><td class="rowlab">~215k</td><td class="num">198 205</td><td class="num best">232,73 s</td><td class="num">852</td><td class="num">318,05 s</td><td class="num">623</td><td class="num">1,37×</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="deep">
+        <summary>Rohdaten — die 8k-Prefill-Szenarien aus bench.py</summary>
+        <div class="deep-body">
+          <p>
+            Diese sechs Messpunkte je Variante stammen aus <code>bench.py</code>, nicht aus
+            <code>prefill.py</code>: rund 14 800 Eingabe-Token, nur 64 Ausgabe-Token. Der
+            Gesamtdurchsatz ist hier wenig aussagekräftig, weil ihn die lange Wartezeit auf das erste
+            Token dominiert — er steht der Vollständigkeit halber hier.
+          </p>
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>Szenario</th><th>Streams</th><th>NVFP4 TTFT</th><th>NVFP4 gesamt</th><th>INT4 TTFT</th><th>INT4 gesamt</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="rowlab">prefill_8k</td><td class="num">1</td><td class="num best">7,618 s</td><td class="num">6,14 tok/s</td><td class="num">15,769 s</td><td class="num">3,41 tok/s</td></tr>
+                <tr><td class="rowlab">prefill_8k</td><td class="num">2</td><td class="num best">11,962 s</td><td class="num">7,29 tok/s</td><td class="num">24,991 s</td><td class="num">3,71 tok/s</td></tr>
+                <tr><td class="rowlab">prefill_8k</td><td class="num">4</td><td class="num best">19,819 s</td><td class="num">7,77 tok/s</td><td class="num">41,316 s</td><td class="num">3,82 tok/s</td></tr>
+                <tr><td class="rowlab">prefill_8k_wiederholt</td><td class="num">1</td><td class="num best">7,547 s</td><td class="num">6,25 tok/s</td><td class="num">15,860 s</td><td class="num">3,48 tok/s</td></tr>
+                <tr><td class="rowlab">prefill_8k_wiederholt</td><td class="num">2</td><td class="num best">11,991 s</td><td class="num">7,16 tok/s</td><td class="num">24,957 s</td><td class="num">3,76 tok/s</td></tr>
+                <tr><td class="rowlab">prefill_8k_wiederholt</td><td class="num">4</td><td class="num best">19,799 s</td><td class="num">7,83 tok/s</td><td class="num">41,218 s</td><td class="num">3,87 tok/s</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Zwei Beobachtungen: Der NVFP4-Vorsprung liegt hier durchgehend bei Faktor 2,07–2,09 und
+            damit noch etwas über dem der kalten Messung. Und die Zeilenpaare
+            <code>prefill_8k</code> / <code>prefill_8k_wiederholt</code> sind bis auf Messrauschen
+            identisch — das ist derselbe fehlende Präfix-Cache, aus einer zweiten Datenquelle
+            bestätigt.
+          </p>
+        </div>
+      </details>
+
+      <div class="note caution">
+        <h4>Der lange Kontext ist nominell vorhanden, praktisch kaum nutzbar</h4>
+        <p>
+          198 205 Token Prefill kosten <strong>3:53 min</strong> mit NVFP4 und <strong>5:18 min</strong>
+          mit INT4 — bevor das erste Ausgabe-Token erscheint. Zum Vergleich: Qwen3.6-35B-A3B benötigte
+          für dieselbe Stufe 81,6 s. Wer die 262k tatsächlich ausschöpfen will, plant hier in Minuten,
+          nicht in Sekunden.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ PRÄFIX -->
+    <section id="praefix">
+      <h2>Der fehlende Präfix-Cache</h2>
+
+      <p>
+        Der Benchmark fährt dasselbe 8k-Szenario zweimal: einmal regulär, einmal mit identischem
+        Präfix. Bei Modellen mit funktionierendem Präfix-Cache fällt der zweite Durchlauf dramatisch
+        schneller aus. Hier nicht.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Warm gegen kalt</caption>
+          <thead>
+            <tr><th>Variante</th><th>kalt (16k, eigener Präfix)</th><th>warm (15k, wiederholt)</th><th>pro Token</th><th>Effekt</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rowlab">NVFP4</td><td class="num">8,50 s</td><td class="num">7,62 s</td>
+              <td class="num">0,517 vs 0,514 ms</td><td class="num">1,0×</td>
+            </tr>
+            <tr>
+              <td class="rowlab">INT4</td><td class="num">17,31 s</td><td class="num">15,77 s</td>
+              <td class="num">1,053 vs 1,063 ms</td><td class="num">1,0×</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Auf die Prompt-Länge normiert sind warm und kalt identisch. Das entspricht dem Befund bei
+        Qwen3.6 — überrascht hier aber mehr, denn Qwen3.8 ist der schärfere Test: <strong>16 seiner
+        64 Schichten sind volle Attention</strong> mit echtem KV-Cache. Ein teilweiser Cache-Nutzen
+        wäre also architektonisch möglich gewesen.
+      </p>
+
+      <div class="note error">
+        <h4>Die Ursache steht in der Engine-Konfiguration</h4>
+        <p>
+          Beide Server-Logs melden <code>enable_prefix_caching=False</code>, obwohl das auf keiner
+          Kommandozeile steht. vLLM schaltet die Funktion für Hybridmodelle selbsttätig ab. Die
+          Architektur macht einen <em>vollständigen</em> Präfix-Cache unmöglich — die lineare
+          Attention führt einen sequenziell fortgeschriebenen Zustand, der sich nicht stückweise
+          wiederverwenden lässt. Die Antwort der Engine darauf ist, das Feature ganz abzuschalten,
+          statt die 16 geeigneten Schichten zu cachen.
+        </p>
+        <p>
+          <strong>Nicht geprüft:</strong> ob sich der Teilfall mit explizitem
+          <code>--enable-prefix-caching</code> erzwingen lässt und was er brächte.
+        </p>
+      </div>
+
+      <p>
+        Praktische Folge für Agent-Betrieb: Ein Agent, der denselben 16k-Kontext über 20 Runden
+        mitführt, zahlt ihn jedes Mal voll. Bei Qwen3.6 sind das 56 s statt 5 s, bei Qwen3.8-NVFP4
+        rund 152 s — und bei INT4 gut das Doppelte.
+      </p>
+    </section>
+
+    <!-- ============================================ SPEICHER -->
+    <section id="speicher">
+      <h2>Speicher und KV-Cache</h2>
+
+      <p>
+        Hier steht der überraschendste Befund der Messreihe: <strong>INT4 erhält mehr
+        Cache-Speicher und fasst darin trotzdem nur halb so viele Token.</strong>
+      </p>
+
+      <figure class="chart">
+        <svg viewBox="0 0 720 220" role="img" aria-label="Balkenvergleich der KV-Cache-Kapazität. NVFP4 fasst 2.192.477 Token bei 76,4 Gibibyte Cache-Speicher, INT4 nur 1.191.213 Token bei 80,17 Gibibyte.">
+          <text class="svg-axtitle" x="20" y="16">KV-CACHE-KAPAZITÄT IN TOKEN</text>
+
+          <!-- NVFP4 -->
+          <text class="svg-lab" x="20" y="58">NVFP4</text>
+          <rect x="100" y="40" width="560" height="30" fill="#1A5E63"/>
+          <text class="svg-val" x="648" y="60" text-anchor="end" fill="#FFFFFF">2 192 477</text>
+          <text class="svg-tick" x="100" y="88">76,40 GiB Cache-Speicher · FP8 · Blockgröße 1600</text>
+
+          <!-- INT4 -->
+          <text class="svg-lab" x="20" y="138">INT4</text>
+          <rect x="100" y="120" width="304" height="30" fill="#B0562A"/>
+          <text class="svg-val" x="392" y="140" text-anchor="end" fill="#FFFFFF">1 191 213</text>
+          <text class="svg-tick" x="100" y="168">80,17 GiB Cache-Speicher · bf16 · Blockgröße 800</text>
+
+          <!-- Hinweis -->
+          <line class="svg-grid" x1="100" y1="186" x2="660" y2="186"/>
+          <text class="svg-tick" x="100" y="204" fill="#B3261E">INT4 bekommt 3,77 GiB mehr Speicher und speichert darin 46 % weniger Token.</text>
+        </svg>
+        <figcaption>
+          Der Balken zeigt die Kapazität, die Beschriftung den dafür verfügbaren Speicher. Beides
+          läuft auseinander.
+        </figcaption>
+      </figure>
+
+      <div class="scroller">
+        <table>
+          <caption>Speicheraufteilung</caption>
+          <thead><tr><th>&nbsp;</th><th>NVFP4</th><th>INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Checkpoint</td><td class="num">21,81 GiB</td><td class="num best">18,12 GiB</td></tr>
+            <tr><td class="rowlab">verfügbarer KV-Cache</td><td class="num">76,40 GiB</td><td class="num best">80,17 GiB</td></tr>
+            <tr><td class="rowlab"><code>k_scale</code>/<code>v_scale</code> im Checkpoint</td><td class="num best">16 / 16</td><td class="num worse">0 / 0</td></tr>
+            <tr><td class="rowlab">KV-Cache-Datentyp</td><td class="num best">FP8</td><td class="num worse">bf16</td></tr>
+            <tr><td class="rowlab">Attention-Blockgröße</td><td class="num">1 600 Token</td><td class="num">800 Token</td></tr>
+            <tr><td class="rowlab">KV-Cache-Kapazität</td><td class="num best">2 192 477</td><td class="num worse">1 191 213</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Der unsloth-NVFP4-Checkpoint bringt für seine 16 Full-Attention-Schichten je eine
+        <code>k_scale</code> und <code>v_scale</code> mit. Damit kann vLLM den KV-Cache in FP8
+        halten, was pro Token die Hälfte kostet. Der RedHatAI-INT4-Checkpoint liefert keine, also
+        fällt die Engine auf bf16 zurück.
+      </p>
+
+      <div class="note caution">
+        <h4>Dieselbe Fehlerklasse wie bei Laguna, nur milder</h4>
+        <p>
+          In der Laguna-Messreihe hatte ein Upstream-Checkpoint ohne KV-Skalen dazu geführt, dass der
+          Server bei <code>--max-model-len 262144</code> überhaupt nicht mehr startete. Hier halbiert
+          derselbe Umstand nur die Kapazität — bei 121 GB unified fällt das nicht weiter auf. Bemerkenswert
+          ist, wie <strong>unsichtbar</strong> die Eigenschaft ist: Weder der Modellname noch die
+          <code>quantization_config</code> erwähnen sie. Sichtbar wird sie erst, wenn man die
+          <code>*_scale</code>-Tensoren in <code>model.safetensors.index.json</code> zählt.
+        </p>
+      </div>
+
+      <details class="deep">
+        <summary>Prüfbefehl</summary>
+        <div class="deep-body">
+          <pre>python3 -c "
+import json
+d = json.load(open('model.safetensors.index.json'))['weight_map']
+print('k_scale:', sum(1 for k in d if k.endswith('k_scale')))
+print('v_scale:', sum(1 for k in d if k.endswith('v_scale')))
+"</pre>
+          <p>
+            Ein Ergebnis von <code>0 / 0</code> bedeutet bf16-KV-Cache und damit die doppelten Kosten
+            je Token — unabhängig davon, wie klein der Checkpoint selbst ist.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============================================ KERNEL -->
+    <section id="kernel">
+      <h2>Kernel-Pfade</h2>
+
+      <p>
+        vLLM protokolliert beim Start, welche Kernel es wählt. Die beiden Varianten unterscheiden
+        sich nicht nur im GEMM-Pfad, sondern auch im Attention-Backend.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Gewählte Implementierungen</caption>
+          <thead><tr><th>&nbsp;</th><th>NVFP4</th><th>INT4</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">Lineare Schichten</td><td class="num">FlashInferCutlassNvFp4LinearKernel</td><td class="num">MarlinLinearKernel</td></tr>
+            <tr><td class="rowlab">Attention-Backend</td><td class="num">FLASHINFER</td><td class="num">FLASH_ATTN (FA 2)</td></tr>
+            <tr><td class="rowlab">Kandidaten laut Log</td><td class="num">FLASHINFER, TRITON_ATTN</td><td class="num">FLASH_ATTN, FLASHINFER, TRITON_ATTN, FLEX_ATTENTION</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note error">
+        <h4>Der Vergleich ist breiter, als er aussieht</h4>
+        <p>
+          In der NVFP4-Konfiguration stand <code>FLASH_ATTN</code> gar nicht erst zur Auswahl —
+          vLLM bot nur <code>FLASHINFER</code> und <code>TRITON_ATTN</code> an. Die gemessenen
+          Unterschiede gehen daher auf <strong>zwei vollständige Engine-Konfigurationen</strong>
+          zurück, nicht auf die Quantisierung allein. Wie viel des Prefill-Vorsprungs auf den
+          GEMM-Pfad und wie viel auf das Attention-Backend entfällt, trennt diese Messreihe nicht.
+        </p>
+      </div>
+
+      <p>
+        Der Befund passt zur Erklärung aus der Gemma-4-Messreihe: Marlin amortisiert seine
+        Entpackkosten über den Batch und wird deshalb mit steigender Last relativ stärker, während
+        der FlashInfer-CUTLASS-Pfad schon bei einem einzelnen Stream nahe am Optimum arbeitet und
+        wenig Luft nach oben hat.
+      </p>
+    </section>
+
+    <!-- ============================================ MTP -->
+    <section id="mtp">
+      <h2>Spekulatives Decoding</h2>
+
+      <p>
+        Beide Läufe nutzten den im Modell enthaltenen MTP-Kopf mit drei Entwurfs-Token. Ohne ihn
+        wäre das Ergebnis ein anderes.
+      </p>
+
+      <div class="note">
+        <h4>Warum 21,5 statt der erwarteten 9 tok/s</h4>
+        <p>
+          21,81 GiB Gewichte müssen bei jedem Token über einen Bus mit rund 273 GB/s. Das ergibt ein
+          rechnerisches Dach von etwa 12 tok/s, realistisch eher 9. Gemessen wurden 21,5. Die
+          Differenz kommt vom MTP-Kopf: Er hebt die Bandbreitengrenze nicht auf, sondern verteilt
+          sie auf mehrere akzeptierte Token pro Durchgang.
+        </p>
+      </div>
+
+      <div class="scroller">
+        <table>
+          <caption>SpecDecoding-Metriken, INT4-Lauf, Stichproben aus dem Serverlog</caption>
+          <thead>
+            <tr><th>Mittlere Akzeptanzlänge</th><th>Positionsweise Rate</th><th>Akzeptanzrate</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">3,25</td><td class="num">0,875 / 0,750 / 0,625</td><td class="num">75,0 %</td></tr>
+            <tr><td class="num">3,64</td><td class="num">1,000 / 0,857 / 0,786</td><td class="num">88,1 %</td></tr>
+            <tr><td class="num">3,29</td><td class="num">0,927 / 0,732 / 0,634</td><td class="num">76,4 %</td></tr>
+            <tr><td class="num">3,67</td><td class="num">1,000 / 0,889 / 0,778</td><td class="num">88,9 %</td></tr>
+            <tr><td class="num">3,44</td><td class="num">0,889 / 0,889 / 0,667</td><td class="num">81,5 %</td></tr>
+            <tr><td class="num">3,31</td><td class="num">1,000 / 0,692 / 0,615</td><td class="num">76,9 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Die mittlere Akzeptanzlänge liegt bei 3,25 bis 3,67 von maximal 4 möglichen Token je
+        Durchgang. Die positionsweisen Raten fallen erwartungsgemäß ab — das dritte Entwurfs-Token
+        wird nur noch in 62–79 % der Fälle akzeptiert. vLLM warnt beim Start ausdrücklich, dass
+        <code>num_speculative_tokens &gt; 1</code> denselben MTP-Layer mehrfach durchläuft und die
+        Akzeptanzrate drückt.
+      </p>
+
+      <div class="note caution">
+        <p>
+          <strong>Nicht gemessen:</strong> derselbe Lauf ohne MTP. Der Beitrag des spekulativen
+          Decodings ist hier aus der Differenz zur Bandbreitenrechnung erschlossen, nicht direkt
+          gemessen. Ebenfalls offen, ob ein anderer Wert als 3 Entwurfs-Token besser abschneidet.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ EINORDNUNG -->
+    <section id="einordnung">
+      <h2>Einordnung</h2>
+
+      <p>
+        Gegenüber den bisher auf demselben Gerät gemessenen Modellen ordnet sich Qwen3.8-27B so ein:
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Alle Konfigurationen dieser Messreihe</caption>
+          <thead>
+            <tr><th>Konfiguration</th><th>aktive Parameter</th><th>Decode c=1</th><th>Decode c=4</th><th>bestes TTFT</th><th>KV-Cache</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="rowlab">Laguna-S-2.1 NVFP4</td><td class="num">8 B</td><td class="num">17,3</td><td class="num">42,7</td><td class="num">0,352 s</td><td class="num">94 135</td></tr>
+            <tr><td class="rowlab">Laguna-S-2.1 INT4 (vLLM)</td><td class="num">8 B</td><td class="num">20,6</td><td class="num">52,8</td><td class="num">0,260 s</td><td class="num">1 001 532</td></tr>
+            <tr><td class="rowlab">Qwen3.6-35B-A3B NVFP4</td><td class="num">3 B</td><td class="num best">60,7</td><td class="num best">201,2</td><td class="num">0,094 s</td><td class="num">3 366 051</td></tr>
+            <tr><td class="rowlab">Gemma-4-26B-A4B NVFP4</td><td class="num">4 B</td><td class="num">53,0</td><td class="num">170,6</td><td class="num best">0,036 s</td><td class="num best">3 912 140</td></tr>
+            <tr><td class="rowlab">Gemma-4-26B-A4B INT4</td><td class="num">4 B</td><td class="num">43,9</td><td class="num">177,1</td><td class="num">0,038 s</td><td class="num">3 875 400</td></tr>
+            <tr><td class="rowlab">Qwen3.8-27B NVFP4 (dense)</td><td class="num">27 B</td><td class="num">21,5</td><td class="num">66,0</td><td class="num">0,272 s</td><td class="num">2 192 477</td></tr>
+            <tr><td class="rowlab">Qwen3.8-27B INT4 (dense)</td><td class="num">27 B</td><td class="num">18,6</td><td class="num">70,9</td><td class="num">0,333 s</td><td class="num">1 191 213</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Der Grundbefund der Messreihe bleibt bestehen: <strong>die Zahl der aktiven Parameter
+        dominiert alles andere.</strong> Qwen3.8 ist die Ausnahme, die ihn bestätigt — mit 27 B
+        aktiven Parametern, dem 3,4-fachen von Laguna, landet es dank MTP dennoch auf dessen Niveau.
+        Gegenüber dem MoE-Feld mit 3–4 B aktiven Parametern fehlt aber ein Faktor drei, und beim
+        Prefill ein Faktor 2,6 gegenüber Qwen3.6.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <caption>Qwen3.8-NVFP4 gegen Qwen3.6-NVFP4, dense gegen MoE</caption>
+          <thead><tr><th>&nbsp;</th><th>Qwen3.6-35B-A3B</th><th>Qwen3.8-27B</th><th>Verhältnis</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">aktive Parameter</td><td class="num">3 B</td><td class="num">27 B</td><td class="num">9,0×</td></tr>
+            <tr><td class="rowlab">Decode c=1</td><td class="num best">60,7</td><td class="num">21,5</td><td class="num">0,35×</td></tr>
+            <tr><td class="rowlab">Decode c=4</td><td class="num best">201,2</td><td class="num">66,0</td><td class="num">0,33×</td></tr>
+            <tr><td class="rowlab">TTFT kurz</td><td class="num best">0,094 s</td><td class="num">0,272 s</td><td class="num">2,9×</td></tr>
+            <tr><td class="rowlab">Prefill 4–5k</td><td class="num best">5 064 tok/s</td><td class="num">1 946 tok/s</td><td class="num">0,38×</td></tr>
+            <tr><td class="rowlab">Prefill 198k</td><td class="num best">2 429 tok/s</td><td class="num">852 tok/s</td><td class="num">0,35×</td></tr>
+            <tr><td class="rowlab">KV-Cache</td><td class="num best">3 366 051</td><td class="num">2 192 477</td><td class="num">0,65×</td></tr>
+            <tr><td class="rowlab">Präfix-Cache-Effekt</td><td class="num">1,0×</td><td class="num">1,0×</td><td class="num">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note caution">
+        <p>
+          Dieser Vergleich betrifft ausschließlich Geschwindigkeit. <strong>Antwortqualität wurde
+          nicht gemessen.</strong> Ob 27 B dense pro Token mehr leisten als 3 B aktiv aus 35 B, ist
+          genau die Frage, die diese Messreihe nicht beantwortet — und die für eine Modellwahl
+          entscheidend wäre.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ EMPFEHLUNG -->
+    <section id="empfehlung">
+      <h2>Empfehlung</h2>
+
+      <h3>Zwischen den beiden Varianten</h3>
+      <p>
+        <strong>NVFP4 für den interaktiven Betrieb.</strong> Es gewinnt bei einem Stream (+16 %),
+        bei der Antwortlatenz auf allen Laststufen, beim Prefill durchgehend (Faktor 1,37–2,04) und
+        bei der KV-Cache-Kapazität (1,8×). Der einzige Bereich, in dem INT4 vorn liegt, ist der
+        Decode-Durchsatz ab vier parallelen Strömen — und dort mit 6 %.
+      </p>
+      <p>
+        <strong>INT4 nur bei durchgehend hoher Batch-Last</strong>, wenn der Prefill kurz bleibt und
+        der Durchsatz zählt. Wer diesen Weg geht, sollte sich der halbierten KV-Cache-Kapazität
+        bewusst sein — bei 121 GB unified ist sie unkritisch, auf kleinerer Hardware nicht.
+      </p>
+
+      <h3>Für dieses Modell überhaupt</h3>
+      <p>
+        Qwen3.8-27B ist auf diesem Gerät ein Modell für <strong>kurze Kontexte und geduldige
+        Anwender</strong>. Zwei Eigenschaften schließen den Agent-Betrieb praktisch aus: der fehlende
+        Präfix-Cache, der jeden mitgeführten Kontext in jeder Runde neu bezahlt, und die
+        Prefill-Rate, die bei großen Kontexten in Minuten statt Sekunden rechnet. Für Aufgaben mit
+        kurzem Prompt und begrenzter Ausgabe ist es dagegen brauchbar, und der MTP-Kopf macht 27 B
+        dense auf dieser Hardware überhaupt erst vertretbar.
+      </p>
+
+      <div class="note">
+        <h4>Ungeprüfte Alternativen</h4>
+        <p>
+          Aus der Kandidatenliste wären zwei weitere Läufe naheliegend:
+          <code>sakamakismile/…-MTP-NVFP4</code> (19,1 GiB, durchgehend W4A4 statt gemischt — kleiner,
+          aber mit 4-Bit-Attention und entsprechendem Qualitätsrisiko) und
+          <code>cyankiwi/…-AWQ-INT4</code> (Gruppengröße 32 statt 128, AWQ-kalibriert). Ebenfalls
+          offen: der DSpark-Drafter mit 1,36 Mrd. Parametern gegen den eingebauten MTP-Kopf mit einer
+          Schicht — laut Modellkarte allerdings für SGLang vorgesehen.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================ LIMITATIONEN -->
+    <section id="limit">
+      <h2>Limitationen</h2>
+      <ul>
+        <li>
+          <strong>Antwortqualität wurde nicht gemessen.</strong> Kein Unterschied zwischen NVFP4 und
+          INT4 in diesen Zahlen sagt etwas darüber aus, welche Variante besser antwortet.
+        </li>
+        <li>
+          <strong>Der Decode misst Reasoning-Token.</strong> Eine Stichprobe ergab bei 120 Token ein
+          leeres <code>content</code>-Feld und 531 Zeichen <code>reasoning</code>. Die Raten sind als
+          Raten gültig, aber keine Zeit bis zur fertigen Antwort. Der Vergleich zwischen
+          <code>prosa_decode</code> und <code>code_decode</code> ist dadurch bedeutungslos.
+        </li>
+        <li>
+          <strong>Zwei Engine-Konfigurationen, nicht zwei Quantisierungen.</strong> Die Varianten
+          liefen auf verschiedenen Attention-Backends (<code>FLASHINFER</code> gegen
+          <code>FLASH_ATTN</code>), weil vLLM für NVFP4 gar kein FlashAttention anbot.
+        </li>
+        <li>
+          <strong>Nebenläufigkeit nur bis 4 gemessen.</strong> Der INT4-Vorsprung wuchs bis zur
+          letzten Stufe — wo er endet, ist ungetestet.
+        </li>
+        <li>
+          <strong>Der MTP-Beitrag ist erschlossen, nicht gemessen.</strong> Ein Vergleichslauf ohne
+          spekulatives Decoding fehlt, ebenso eine Variation der Entwurfs-Token-Anzahl.
+        </li>
+        <li>
+          <strong>Vision wurde nicht angesprochen.</strong> Qwen3.8-27B ist multimodal; alle
+          Messungen sind reine Textlast.
+        </li>
+        <li>
+          <strong>Eine Messreihe je Konfiguration</strong>, drei Wiederholungen je Punkt, keine
+          Mittelung über Sitzungen. Eine Stichprobe in der bestehenden Messreihe zeigte 1,4 %
+          Abweichung zwischen zwei Läufen derselben Konfiguration.
+        </li>
+        <li>
+          <strong><code>--enable-prefix-caching</code> wurde nicht erzwungen.</strong> Ob der
+          Teil-Cache über die 16 Full-Attention-Schichten etwas brächte, bleibt offen.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================ GLOSSAR -->
+    <section id="glossar">
+      <h2>Glossar</h2>
+      <dl class="glossary">
+        <div class="term">
+          <dt>NVFP4</dt>
+          <dd>
+            NVIDIAs 4-Bit-Fließkommaformat für Blackwell-Tensorkerne, mit Skalierung je kleiner
+            Gruppe. Hier <code>tensor_group</code> mit Gruppengröße 16.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>W4A16 / W4A4 / W8A8</dt>
+          <dd>
+            Bitbreite von Gewichten (W) und Aktivierungen (A). W4A16 spart nur Speicher, W4A4 nutzt
+            zusätzlich die 4-Bit-Rechenpfade der Hardware.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>dense / MoE</dt>
+          <dd>
+            Ein dense Modell aktiviert bei jedem Token alle Parameter. Ein Mixture-of-Experts
+            aktiviert nur einen Bruchteil — daher die Unterscheidung zwischen Gesamt- und aktiven
+            Parametern.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>MTP — Multi-Token Prediction</dt>
+          <dd>
+            Ein zusätzlicher Kopf im Modell, der mehrere Folge-Token vorschlägt. Das Hauptmodell
+            prüft sie in einem Durchgang und übernimmt die zutreffenden.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>Lineare Attention / GDN</dt>
+          <dd>
+            Attention-Variante mit sequenziell fortgeschriebenem Zustand statt wachsendem KV-Cache.
+            Spart Speicher, verhindert aber die stückweise Wiederverwendung eines Präfixes.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>Prefill / Decode</dt>
+          <dd>
+            Prefill verarbeitet den Eingabe-Prompt und ist rechengebunden. Decode erzeugt die Ausgabe
+            Token für Token und ist speicherbandbreitengebunden.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>TTFT</dt>
+          <dd>Time to First Token — Zeit von der Anfrage bis zum ersten ausgegebenen Token.</dd>
+        </div>
+        <div class="term">
+          <dt><code>k_scale</code> / <code>v_scale</code></dt>
+          <dd>
+            Skalierungsfaktoren je Attention-Schicht, die einen quantisierten KV-Cache ermöglichen.
+            Fehlen sie, fällt die Engine auf bf16 zurück und verdoppelt die Kosten je Token.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>Marlin</dt>
+          <dd>
+            GPU-Kernel für INT4-Gewichte mit bf16-Aktivierungen. Entpackt die Gewichte zur Laufzeit
+            und amortisiert diesen Aufwand über den Batch.
+          </dd>
+        </div>
+        <div class="term">
+          <dt>Präfix-Cache</dt>
+          <dd>
+            Wiederverwendung bereits berechneter KV-Einträge für einen identischen Prompt-Anfang.
+            Bei vLLM „APC“, bei SGLang „RadixAttention“.
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- ============================================ ARTEFAKTE -->
+    <section id="artefakte">
+      <h2>Artefakte</h2>
+
+      <p>Alle Rohdaten und Skripte dieser Messreihe liegen im Repository:</p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Datei</th><th>Inhalt</th></tr></thead>
+          <tbody>
+            <tr><td class="rowlab">start-vllm-qwen38-nvfp4.sh</td><td>Startskript NVFP4, Revision gepinnt</td></tr>
+            <tr><td class="rowlab">start-vllm-qwen38-int4.sh</td><td>Startskript INT4, Revision gepinnt</td></tr>
+            <tr><td class="rowlab">run-qwen38-bench.sh</td><td>wartet auf Bereitschaft, fährt beide Messskripte</td></tr>
+            <tr><td class="rowlab">chain-qwen38-int4.sh</td><td>Umschaltung vom NVFP4- auf den INT4-Lauf</td></tr>
+            <tr><td class="rowlab">ergebnisse_qwen38-nvfp4.json</td><td>12 Durchsatz-Messpunkte NVFP4</td></tr>
+            <tr><td class="rowlab">ergebnisse_qwen38-int4.json</td><td>12 Durchsatz-Messpunkte INT4</td></tr>
+            <tr><td class="rowlab">prefill_qwen38-nvfp4.json</td><td>5 Prefill-Stufen NVFP4</td></tr>
+            <tr><td class="rowlab">prefill_qwen38-int4.json</td><td>5 Prefill-Stufen INT4</td></tr>
+            <tr><td class="rowlab">qwen38-nvfp4.log</td><td>Serverlog inkl. Kernel-Auswahl und SpecDecoding-Metriken</td></tr>
+            <tr><td class="rowlab">qwen38-int4.log</td><td>dito für INT4</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <dl class="spec">
+        <dt>NVFP4</dt><dd><code>unsloth/Qwen3.8-27B-NVFP4</code> @ <code>7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108</code></dd>
+        <dt>INT4</dt><dd><code>RedHatAI/Qwen3.8-27B-INT4</code> @ <code>2fb0debc365fb6c1683d7d3ad7722470919627a8</code></dd>
+      </dl>
+    </section>
+
+  </main>
+
+  <footer>
+    Messreihe vom 21. August 2026 · DGX Spark GB10, sm_121a · vLLM 0.25.1, torch 2.11.0+cu130 ·
+    Alle Werte auf dieser Hardware gemessen, Median aus drei Läufen · Antwortqualität nicht bewertet
+  </footer>
+
+</div>
+
+</body>
+</html>

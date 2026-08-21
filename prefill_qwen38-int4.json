@@ -1,0 +1,36 @@
+{
+  "engine": "qwen38-int4",
+  "modell": "RedHatAI/Qwen3.8-27B-INT4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4064,
+      "ttft_s_median": 4.327,
+      "prefill_tps": 939
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 16426,
+      "ttft_s_median": 17.306,
+      "prefill_tps": 949
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 64462,
+      "ttft_s_median": 78.615,
+      "prefill_tps": 820
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 129322,
+      "ttft_s_median": 181.514,
+      "prefill_tps": 712
+    },
+    {
+      "stufe": "~215k",
+      "prompt_tokens": 198205,
+      "ttft_s_median": 318.053,
+      "prefill_tps": 623
+    }
+  ]
+}

@@ -12,3 +12,6 @@ venv*/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# Download-Protokolle des HF-Clients, kein Messartefakt.
+download-*.log

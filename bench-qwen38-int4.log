@@ -1,0 +1,39 @@
+== warte auf Ende des NVFP4-Laufs (PID 552273) ==
+NVFP4-Lauf beendet 10:24:34
+== stoppe NVFP4-Server ==
+Port 8000 frei nach 2s
+== starte INT4-Server 10:24:40 ==
+Server-PID 554845
+== warte auf Server (qwen38-int4) ==
+bereit nach 309s
+
+== bench.py ==
+== Benchmark qwen38-int4 gegen http://localhost:8000 ==
+Aufwaermen ...
+prosa_decode             c=1  ttft=0.333s  decode=19.096 tok/s  gesamt=18.62 tok/s
+prosa_decode             c=2  ttft=0.527s  decode=20.003 tok/s  gesamt=37.28 tok/s
+prosa_decode             c=4  ttft=0.549s  decode=18.281 tok/s  gesamt=67.4 tok/s
+code_decode              c=1  ttft=0.336s  decode=18.441 tok/s  gesamt=18.05 tok/s
+code_decode              c=2  ttft=0.389s  decode=19.873 tok/s  gesamt=38.62 tok/s
+code_decode              c=4  ttft=0.521s  decode=18.405 tok/s  gesamt=70.88 tok/s
+prefill_8k               c=1  ttft=15.769s  decode=21.295 tok/s  gesamt=3.41 tok/s
+prefill_8k               c=2  ttft=24.991s  decode=13.107 tok/s  gesamt=3.71 tok/s
+prefill_8k               c=4  ttft=41.316s  decode=2.902 tok/s  gesamt=3.82 tok/s
+prefill_8k_wiederholt    c=1  ttft=15.86s  decode=24.892 tok/s  gesamt=3.48 tok/s
+prefill_8k_wiederholt    c=2  ttft=24.957s  decode=14.974 tok/s  gesamt=3.76 tok/s
+prefill_8k_wiederholt    c=4  ttft=41.218s  decode=3.042 tok/s  gesamt=3.87 tok/s
+
+geschrieben: ergebnisse_qwen38-int4.json
+
+== prefill.py ==
+== Kaltes Prefill, qwen38-int4 ==
+  ~5k   4064 Token  ttft=4.33s  -> 939 tok/s Prefill
+  ~18k  16426 Token  ttft=17.31s  -> 949 tok/s Prefill
+  ~72k  64462 Token  ttft=78.62s  -> 820 tok/s Prefill
+  ~145k  129322 Token  ttft=181.51s  -> 712 tok/s Prefill
+  ~215k  198205 Token  ttft=318.05s  -> 623 tok/s Prefill
+geschrieben: prefill_qwen38-int4.json
+
+== SpecDecoding-Metriken (letzte Zeile) ==
+(APIServer pid=554845) INFO 08-21 11:10:59 [metrics.py:120] SpecDecoding metrics: Mean acceptance length: 4.00, Accepted throughput: 0.02 tokens/s, Drafted throughput: 0.02 tokens/s, Accepted: 6 tokens, Drafted: 6 tokens, Per-position acceptance rate: 1.000, 1.000, 1.000, Avg Draft acceptance rate: 100.0%
+== FERTIG qwen38-int4 ==

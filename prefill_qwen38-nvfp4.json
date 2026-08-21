@@ -1,0 +1,36 @@
+{
+  "engine": "qwen38-nvfp4",
+  "modell": "unsloth/Qwen3.8-27B-NVFP4",
+  "stufen": [
+    {
+      "stufe": "~5k",
+      "prompt_tokens": 4126,
+      "ttft_s_median": 2.12,
+      "prefill_tps": 1946
+    },
+    {
+      "stufe": "~18k",
+      "prompt_tokens": 16426,
+      "ttft_s_median": 8.497,
+      "prefill_tps": 1933
+    },
+    {
+      "stufe": "~72k",
+      "prompt_tokens": 65875,
+      "ttft_s_median": 45.38,
+      "prefill_tps": 1452
+    },
+    {
+      "stufe": "~145k",
+      "prompt_tokens": 131204,
+      "ttft_s_median": 123.12,
+      "prefill_tps": 1066
+    },
+    {
+      "stufe": "~215k",
+      "prompt_tokens": 198205,
+      "ttft_s_median": 232.734,
+      "prefill_tps": 852
+    }
+  ]
+}

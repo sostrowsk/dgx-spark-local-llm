@@ -1,0 +1,33 @@
+== warte auf Server (qwen38-nvfp4) ==
+bereit nach 334s
+
+== bench.py ==
+== Benchmark qwen38-nvfp4 gegen http://localhost:8000 ==
+Aufwaermen ...
+prosa_decode             c=1  ttft=0.3s  decode=22.104 tok/s  gesamt=21.47 tok/s
+prosa_decode             c=2  ttft=0.284s  decode=19.415 tok/s  gesamt=36.98 tok/s
+prosa_decode             c=4  ttft=0.475s  decode=18.354 tok/s  gesamt=63.32 tok/s
+code_decode              c=1  ttft=0.272s  decode=20.29 tok/s  gesamt=19.87 tok/s
+code_decode              c=2  ttft=0.291s  decode=21.308 tok/s  gesamt=39.55 tok/s
+code_decode              c=4  ttft=0.471s  decode=18.802 tok/s  gesamt=65.98 tok/s
+prefill_8k               c=1  ttft=7.618s  decode=22.768 tok/s  gesamt=6.14 tok/s
+prefill_8k               c=2  ttft=11.962s  decode=16.355 tok/s  gesamt=7.29 tok/s
+prefill_8k               c=4  ttft=19.819s  decode=6.027 tok/s  gesamt=7.77 tok/s
+prefill_8k_wiederholt    c=1  ttft=7.547s  decode=23.948 tok/s  gesamt=6.25 tok/s
+prefill_8k_wiederholt    c=2  ttft=11.991s  decode=15.006 tok/s  gesamt=7.16 tok/s
+prefill_8k_wiederholt    c=4  ttft=19.799s  decode=5.968 tok/s  gesamt=7.83 tok/s
+
+geschrieben: ergebnisse_qwen38-nvfp4.json
+
+== prefill.py ==
+== Kaltes Prefill, qwen38-nvfp4 ==
+  ~5k   4126 Token  ttft=2.12s  -> 1946 tok/s Prefill
+  ~18k  16426 Token  ttft=8.50s  -> 1933 tok/s Prefill
+  ~72k  65875 Token  ttft=45.38s  -> 1452 tok/s Prefill
+  ~145k  131204 Token  ttft=123.12s  -> 1066 tok/s Prefill
+  ~215k  198205 Token  ttft=232.73s  -> 852 tok/s Prefill
+geschrieben: prefill_qwen38-nvfp4.json
+
+== SpecDecoding-Metriken (letzte Zeile) ==
+(APIServer pid=551751) INFO 08-21 10:20:43 [metrics.py:120] SpecDecoding metrics: Mean acceptance length: 2.33, Accepted throughput: 0.02 tokens/s, Drafted throughput: 0.04 tokens/s, Accepted: 4 tokens, Drafted: 9 tokens, Per-position acceptance rate: 0.667, 0.333, 0.333, Avg Draft acceptance rate: 44.4%
+== FERTIG qwen38-nvfp4 ==
